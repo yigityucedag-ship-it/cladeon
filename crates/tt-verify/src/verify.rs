@@ -491,27 +491,108 @@ pub fn verify_bundle(
     }
 
     // ---- markers ----
-    v.marker = match get(tt_bundle::FORENSIC_MARKERS_JSON) {
-        None => {
-            findings.push(
-                "The bundle declares no forensic markers, so rendering tripwires were not \
-                 checked."
-                    .into(),
-            );
-            MarkerStatus::Absent
-        }
-        Some(_) => {
-            findings.push(
-                "Forensic markers are declared. Marker correlation is checked against the \
-                 PDF rendering only, and is never a root of trust."
-                    .into(),
-            );
-            MarkerStatus::NotApplicable
-        }
-    };
+    v.marker = check_markers(
+        get(tt_bundle::FORENSIC_MARKERS_JSON).as_deref(),
+        get(tt_bundle::REPORT_PDF).as_deref(),
+        &mut findings,
+    );
 
     v.findings = findings;
     v
+}
+
+/// Correlate the tint marker in the PDF against what the bundle declares.
+///
+/// ## What a marker result does and does not mean
+///
+/// `present_consistent` says the PDF still carries the carrier the report expects,
+/// so the rendering has not been rebuilt or re-exported since the scan. It says
+/// nothing about whether the report is *true*, and it is not a root of trust: the
+/// scheme is in a binary the vendor holds, and anyone who reverse-engineers it can
+/// reproduce a marker. `present_inconsistent` is the interesting one — it means a
+/// PDF claims a marker it does not carry, which is what copying a marker between
+/// reports, or editing and re-exporting one, actually looks like.
+///
+/// Absence is not a fault. A report may legitimately carry no marker, and that is
+/// `absent`, not a failure.
+fn check_markers(
+    markers_json: Option<&[u8]>,
+    pdf: Option<&[u8]>,
+    findings: &mut Vec<String>,
+) -> MarkerStatus {
+    let Some(raw) = markers_json else {
+        findings.push(
+            "The bundle declares no forensic markers, so rendering tripwires were not checked."
+                .into(),
+        );
+        return MarkerStatus::Absent;
+    };
+    let Ok(doc) = tt_core::canon::parse_canonical(raw, &Limits::default()) else {
+        findings.push("The forensic marker declaration could not be read.".into());
+        return MarkerStatus::PresentInconsistent;
+    };
+    let Some(tint) = doc.get("tint_marker") else {
+        return MarkerStatus::Absent;
+    };
+    let expected_tag_hex = tint.get("expected_tag").and_then(|x| x.as_str()).unwrap_or("");
+    let expected_carrier = tint.get("expected_carrier_sha256").and_then(|x| x.as_str()).unwrap_or("");
+
+    let Some(pdf) = pdf else {
+        findings.push(
+            "The bundle declares a tint marker but carries no PDF to check it against.".into(),
+        );
+        return MarkerStatus::PresentInconsistent;
+    };
+
+    let carrier = match tt_report::extract_footer_raster(pdf) {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            findings.push(
+                "The report declares a tint marker, but the PDF carries no marker raster. That is what re-exporting or rebuilding a PDF looks like."
+                    .into(),
+            );
+            return MarkerStatus::PresentInconsistent;
+        }
+        Err(e) => {
+            findings.push(format!("The PDF marker raster could not be read: {e}"));
+            return MarkerStatus::PresentInconsistent;
+        }
+    };
+
+    if !expected_carrier.is_empty() && carrier.digest().to_hex() != expected_carrier {
+        findings.push(
+            "The marker raster in the PDF does not match the one the report declares."
+                .into(),
+        );
+        return MarkerStatus::PresentInconsistent;
+    }
+
+    let tag: [u8; 16] = match tt_core::hex::decode_fixed::<16>(expected_tag_hex) {
+        Ok(t) => t,
+        Err(_) => {
+            findings.push("The declared marker tag is malformed.".into());
+            return MarkerStatus::PresentInconsistent;
+        }
+    };
+    let d = tt_markers::detect(&carrier, &tag);
+    if d.matched {
+        findings.push(format!(
+            concat!(
+                "The tint marker correlates at {} percent against the tag this report ",
+                "declares. That shows the rendering has not been rebuilt. It is not ",
+                "evidence about the report's contents, and it is never a root of trust."
+            ),
+            d.correlation_percent
+        ));
+        MarkerStatus::PresentConsistent
+    } else {
+        findings.push(format!(
+            "The PDF carries a marker raster that does not correlate with the tag this report declares ({} percent, threshold {}). A marker copied from another report looks exactly like this.",
+            d.correlation_percent,
+            tt_markers::DETECTOR_THRESHOLD_PERCENT
+        ));
+        MarkerStatus::PresentInconsistent
+    }
 }
 
 /// Order support bands from weakest to strongest for "weakest facet" reporting.
@@ -828,5 +909,105 @@ mod exit_semantics {
     fn fully_clear_requires_both() {
         let x = v(IntegrityStatus::Intact, Recomputation::Matches, ChallengeStatus::Bound);
         assert!(x.is_sound() && x.is_bound() && x.all_clear());
+    }
+}
+
+#[cfg(test)]
+mod marker_checks {
+    use super::*;
+    use tt_core::canon::Obj;
+    use tt_core::raster::Raster;
+
+    fn markers_doc(tag: &[u8; 16], carrier: &Raster) -> Vec<u8> {
+        CanonValue::Obj(
+            Obj::new().with("schema_version", 1i64).with("marker_version", 1i64).with(
+                "tint_marker",
+                CanonValue::Obj(
+                    Obj::new()
+                        .with("expected_tag", tt_core::hex::encode(tag))
+                        .with("expected_carrier_sha256", carrier.digest()),
+                ),
+            ),
+        )
+        .to_canonical_bytes()
+    }
+
+    /// A one-page PDF carrying `carrier` in its footer.
+    fn pdf_with(carrier: &Raster) -> Vec<u8> {
+        let mut b = tt_report::PdfBuilder::new("t", "f");
+        b.set_footer_raster(carrier.clone());
+        b.paragraph("A rendering.");
+        b.build(&Digest::of(b"doc"))
+    }
+
+    fn carrier_for(tag: &[u8; 16]) -> Raster {
+        tt_markers::build_carrier(tag, 240, 40, tt_markers::tint::RECOMMENDED_BASE)
+    }
+
+    #[test]
+    fn a_matching_marker_reports_present_consistent() {
+        let tag = [3u8; 16];
+        let c = carrier_for(&tag);
+        let mut f = Vec::new();
+        let s = check_markers(Some(&markers_doc(&tag, &c)), Some(&pdf_with(&c)), &mut f);
+        assert_eq!(s, MarkerStatus::PresentConsistent, "{f:?}");
+        assert!(f.iter().any(|x| x.contains("never a root of trust")), "{f:?}");
+    }
+
+    #[test]
+    fn a_marker_copied_from_another_report_is_caught() {
+        // The attack the scheme exists for: take a valid marker out of one report and
+        // paste it into another. The raster is real and correlates perfectly with its
+        // own tag, but not with the tag THIS report declares.
+        let ours = [3u8; 16];
+        let theirs = [9u8; 16];
+        let their_carrier = carrier_for(&theirs);
+        let mut f = Vec::new();
+        let s = check_markers(
+            Some(&markers_doc(&ours, &their_carrier)),
+            Some(&pdf_with(&their_carrier)),
+            &mut f,
+        );
+        assert_eq!(s, MarkerStatus::PresentInconsistent, "{f:?}");
+    }
+
+    #[test]
+    fn a_pdf_rebuilt_without_the_marker_is_caught() {
+        let tag = [3u8; 16];
+        let c = carrier_for(&tag);
+        // A PDF with no footer raster at all: what re-exporting produces.
+        let mut b = tt_report::PdfBuilder::new("t", "f");
+        b.paragraph("Re-exported.");
+        let plain = b.build(&Digest::of(b"doc"));
+        let mut f = Vec::new();
+        let s = check_markers(Some(&markers_doc(&tag, &c)), Some(&plain), &mut f);
+        assert_eq!(s, MarkerStatus::PresentInconsistent, "{f:?}");
+        assert!(f.iter().any(|x| x.contains("re-export")), "{f:?}");
+    }
+
+    #[test]
+    fn a_declared_marker_with_no_pdf_is_inconsistent_not_absent() {
+        let tag = [3u8; 16];
+        let c = carrier_for(&tag);
+        let mut f = Vec::new();
+        assert_eq!(
+            check_markers(Some(&markers_doc(&tag, &c)), None, &mut f),
+            MarkerStatus::PresentInconsistent
+        );
+    }
+
+    #[test]
+    fn no_declaration_is_absent_and_not_a_fault() {
+        let mut f = Vec::new();
+        assert_eq!(check_markers(None, None, &mut f), MarkerStatus::Absent);
+    }
+
+    #[test]
+    fn a_malformed_declaration_does_not_pass_as_consistent() {
+        let mut f = Vec::new();
+        assert_eq!(
+            check_markers(Some(b"{not canonical}"), None, &mut f),
+            MarkerStatus::PresentInconsistent
+        );
     }
 }

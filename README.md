@@ -17,7 +17,7 @@ Stage-1 MVP, CLI-first, working end to end.
 
 | | |
 |---|---|
-| Tests | **641**, all passing |
+| Tests | **647**, all passing |
 | Compiler warnings | **0** |
 | Release binaries | `tt-screen` 0.79 MB, `tt-verify` 0.54 MB, `tt-fixtures` 0.35 MB |
 | Third-party dependencies | **4** — `sha2`, `ed25519-dalek`, `getrandom`, `clap` |
@@ -158,10 +158,6 @@ the code drifts from it.
 - **Thresholds are uncalibrated.** The score is a rubric-based support score, not
   calibrated confidence, and the report says so. No blinded benchmark has been run, so
   no detection rate is claimed.
-- **Marker verification is not wired end to end.** The tint marker is built, embedded
-  in the PDF and recovered correctly (tested), but `tt-verify` reports
-  `marker_status = not_applicable` rather than correlating it. The plumbing exists;
-  the last connection does not.
 - **`supervised_instruction_tuning` has no scored claim**, so a pure SFT declaration
   abstains on training stage. The plan's rubric table has no SFT row either.
 - **No GUI.** Six-screen vendor app is Phase 3 of the plan and not started.
