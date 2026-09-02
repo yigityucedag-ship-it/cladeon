@@ -28,6 +28,7 @@ use tt_facts::{ArtifactType, FactKind, FieldValue};
 pub mod deploy;
 pub mod deps;
 pub mod detect;
+pub mod dispatch;
 pub mod gguf;
 pub mod hf;
 pub mod logs;

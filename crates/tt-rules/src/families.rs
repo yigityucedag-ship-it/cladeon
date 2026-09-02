@@ -1690,6 +1690,12 @@ pub fn binding(ctx: &mut Ctx) {
             "The serving configuration points outside the selected scope, so the artifact \
              it names was not examined.",
         );
+        // We can see that a deployment exists and that it names something we were not
+        // shown. That is a positive reason to doubt we are looking at the right
+        // artifact, which is different from simply having no deployment information.
+        for f in Facet::ALL {
+            ctx.abstain(*f, AbstentionId::NoBinding);
+        }
     } else {
         for (claim, anchor) in BINDABLE {
             ctx.missing(
@@ -1699,9 +1705,18 @@ pub fn binding(ctx: &mut Ctx) {
                 "No serving or deployment configuration was observed in scope.",
             );
         }
-        for f in Facet::ALL {
-            ctx.abstain(*f, AbstentionId::NoBinding);
-        }
+        // Deliberately NOT an abstention.
+        //
+        // A vendor self-scan of a model folder almost never contains serving
+        // configuration, so abstaining here would abstain on every facet of every
+        // ordinary scan, and Stage 1 could never report anything at all. That is not
+        // caution, it is uselessness wearing caution's clothes.
+        //
+        // The honest treatment is to score it and say so: the binding anchor stays at
+        // zero, which lowers the score, and `TT-BIND-005` states unconditionally on
+        // every report that the scanned folder is not established to be the
+        // production deployment. The reader is told exactly what is missing without
+        // the tool refusing to describe what it did see.
     }
 
     // Unconditional on every report.

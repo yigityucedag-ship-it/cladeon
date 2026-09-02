@@ -169,7 +169,7 @@ regardless of score:
 | `ABS-BASE-UNKNOWN` | Exact base identity unknown |
 | `ABS-QUANTIZED-ONLY` | Only quantised or dtype-converted weights available for comparison |
 | `ABS-HASH-CONFLICT` | Important hashes conflict |
-| `ABS-NO-BINDING` | No binding to the claimed deployment |
+| `ABS-NO-BINDING` | A deployment is visible and names an artifact outside the scanned scope |
 | `ABS-CPT-FINAL-ONLY` | CPT-versus-SFT rests only on final weights |
 | `ABS-DISTILL-STYLE-ONLY` | Distillation rests only on style or size similarity |
 | `ABS-SCRATCH-NOMATCH-ONLY` | Scratch rests only on "no known base matched" |
@@ -178,6 +178,22 @@ regardless of score:
 
 **Missing evidence is not contradiction.** No abstention condition may ever be
 rendered as a negative finding about the vendor.
+
+### A note on `ABS-NO-BINDING`
+
+The plan lists "no binding to the claimed deployment" as a mandatory abstention.
+Read literally that abstains on every facet of every scan, because a vendor
+self-scan of a model folder almost never contains serving configuration — Stage 1
+could then never report anything, which is not caution but uselessness wearing
+caution's clothes.
+
+So the condition is narrowed to the case where it carries information: a serving
+or deployment configuration **is** present and names an artifact *outside* the
+scanned scope. That is a positive reason to doubt we were shown the right files.
+Simply having no deployment information is a **missing anchor** (`TT-BIND-004`),
+which lowers the score, plus the unconditional limitation `TT-BIND-005` — printed
+on every report — that the scanned folder is not established to be the production
+deployment.
 
 ---
 

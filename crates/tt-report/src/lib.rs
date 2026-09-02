@@ -11,6 +11,8 @@
 
 pub mod document;
 pub mod pdf;
+pub mod render;
 
 pub use document::{build, HostInfo, Report, ReportInput, ScopeInfo};
 pub use pdf::{extract_footer_raster, extract_text, PdfBuilder};
+pub use render::render;

@@ -122,6 +122,13 @@ pub struct Inventory {
     pub bytes_enumerated: u64,
     pub bytes_hashed: u64,
     pub coverage_status: CoverageStatus,
+    /// Real filesystem paths, keyed by artifact id.
+    ///
+    /// **Scanner-local and never serialised.** `ArtifactRecord` deliberately carries
+    /// only an alias, so that a path cannot reach a report by accident. The scanner
+    /// still has to reopen a file to parse it, so the mapping lives here, beside the
+    /// manifest rather than inside it, and nothing in `tt-report` can see it.
+    pub real_paths: std::collections::BTreeMap<String, PathBuf>,
 }
 
 impl Inventory {
@@ -413,7 +420,7 @@ impl Scanner<'_> {
 
         if !self.opts.hash_files {
             let id = self.ids.artifact();
-            self.push_record(
+            self.push_record_with_path(
                 ArtifactRecord {
                     artifact_id: id,
                     path_alias: alias,
@@ -428,6 +435,7 @@ impl Scanner<'_> {
                     mtime: mtime_before,
                 },
                 0,
+                Some(path),
             );
             return Ok(());
         }
@@ -484,7 +492,7 @@ impl Scanner<'_> {
 
         let id = self.ids.artifact();
         let bytes_hashed = hashed.bytes_hashed;
-        self.push_record(
+        self.push_record_with_path(
             ArtifactRecord {
                 artifact_id: id,
                 path_alias: alias,
@@ -499,6 +507,7 @@ impl Scanner<'_> {
                 mtime: mtime_before,
             },
             bytes_hashed,
+            Some(path),
         );
         Ok(())
     }
@@ -530,6 +539,18 @@ impl Scanner<'_> {
     // -----------------------------------------------------------------------
     // Records and notes
     // -----------------------------------------------------------------------
+
+    fn push_record_with_path(
+        &mut self,
+        rec: ArtifactRecord,
+        bytes_hashed: u64,
+        path: Option<&Path>,
+    ) {
+        if let Some(p) = path {
+            self.inv.real_paths.insert(rec.artifact_id.clone(), p.to_path_buf());
+        }
+        self.push_record(rec, bytes_hashed);
+    }
 
     fn push_record(&mut self, rec: ArtifactRecord, bytes_hashed: u64) {
         self.inv.files_enumerated = self.inv.files_enumerated.saturating_add(1);
