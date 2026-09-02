@@ -17,3 +17,6 @@ tt-markers.workspace = true
 tt-bundle.workspace = true
 tt-case.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+tt-fixtures.workspace = true

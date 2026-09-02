@@ -510,6 +510,7 @@ dependencies = [
  "tt-case",
  "tt-core",
  "tt-facts",
+ "tt-fixtures",
  "tt-formats",
  "tt-inventory",
  "tt-markers",

@@ -44,6 +44,7 @@ tt-markers = { path = "crates/tt-markers" }
 tt-report = { path = "crates/tt-report" }
 tt-bundle = { path = "crates/tt-bundle" }
 tt-case = { path = "crates/tt-case" }
+tt-fixtures = { path = "crates/tt-fixtures" }
 
 sha2 = { version = "0.10", default-features = false }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }

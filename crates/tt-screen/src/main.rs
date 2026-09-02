@@ -11,6 +11,9 @@
 
 mod scan;
 
+#[cfg(test)]
+mod corpus;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;

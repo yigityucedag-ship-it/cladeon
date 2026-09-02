@@ -6,6 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lib]
+name = "tt_fixtures"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tt-fixtures"
+path = "src/main.rs"
+
 [dependencies]
 tt-core.workspace = true
 clap.workspace = true

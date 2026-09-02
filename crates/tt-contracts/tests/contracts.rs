@@ -120,9 +120,25 @@ fn without_test_modules(src: &str) -> String {
 /// or a `.ttscan`. Every such parser is in-repo and bounded. Breaking this silently
 /// re-introduces an unaudited attack surface into a tool whose entire job is to read
 /// files supplied by a party with a motive.
-const ALLOWED_DEPENDENCIES: &[&str] =
-    &["sha2", "ed25519-dalek", "getrandom", "clap", "tt-core", "tt-facts", "tt-inventory",
-      "tt-formats", "tt-rules", "tt-markers", "tt-report", "tt-bundle", "tt-case"];
+const ALLOWED_DEPENDENCIES: &[&str] = &[
+    // The only third-party crates in the workspace.
+    "sha2",
+    "ed25519-dalek",
+    "getrandom",
+    "clap",
+    // In-repo crates. Listed explicitly so that adding a new one is a deliberate act
+    // rather than something a `path = ` dependency can do quietly.
+    "tt-core",
+    "tt-facts",
+    "tt-inventory",
+    "tt-formats",
+    "tt-rules",
+    "tt-markers",
+    "tt-report",
+    "tt-bundle",
+    "tt-case",
+    "tt-fixtures",
+];
 
 #[test]
 fn no_dependency_outside_the_allow_list() {
