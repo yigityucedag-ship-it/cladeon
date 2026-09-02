@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/tt-contracts",
     "crates/tt-core",
     "crates/tt-facts",
     "crates/tt-inventory",

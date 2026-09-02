@@ -429,6 +429,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tt-contracts"
+version = "0.1.0"
+dependencies = [
+ "tt-core",
+ "tt-facts",
+ "tt-rules",
+]
+
+[[package]]
 name = "tt-core"
 version = "0.1.0"
 dependencies = [

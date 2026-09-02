@@ -129,6 +129,16 @@ outcome, not by threshold, and override the band.
 | `CAP-MERGE-UNREPRO` | Merged adapter without exact base or reproducible adapter | 600 |
 | `CAP-CPT-NO-OBJ` | CPT or distillation without objective or teacher trajectory | 400 |
 | `CAP-SCRATCH-NO-ZERO` | Scratch without step-zero and intermediate checkpoints | 450 |
+| `CAP-SINGLE-SOURCE` | Every achieved anchor traces back to one source | 849 |
+
+`CAP-SINGLE-SOURCE` was added during implementation and is not in the original
+plan. The plan requires that correlated evidence not be counted repeatedly — a
+README, a config and a generated model card from one directory are one source, not
+three confirmations. Taking the maximum per anchor removes double-counting *within*
+an anchor but not *across* anchors, so a single chatty config could otherwise fill
+several anchors on its own and reach `corroborated_within_supplied_evidence`. This
+cap states the requirement directly: **corroboration needs more than one independent
+source.** A single source can still reach `strongly_consistent`.
 
 Caps are applied after rubric scoring, lowest cap wins, and every applied cap is
 listed in `report.json` with its ID and the fact that triggered it.
