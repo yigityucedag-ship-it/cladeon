@@ -49,6 +49,7 @@ pub fn parse(
     Some(match t {
         ArtifactType::SafeTensors => crate::safetensors::parse_header(bytes, limits, file_size),
         ArtifactType::Gguf => crate::gguf::parse_metadata(bytes, limits),
+        ArtifactType::Onnx => crate::onnx::parse_metadata(bytes, limits),
         ArtifactType::TrainingLog => crate::logs::parse_tail(bytes, limits, true),
         // A retrieval trace routes to `rag`, not `logs`: the question asked of it is
         // whether a query-to-scored-chunks chain exists, which a metric parser
@@ -159,6 +160,7 @@ mod tests {
         for t in [
             ArtifactType::SafeTensors,
             ArtifactType::Gguf,
+            ArtifactType::Onnx,
             ArtifactType::PeftAdapterConfig,
             ArtifactType::TransformersConfig,
             ArtifactType::ShardIndex,
