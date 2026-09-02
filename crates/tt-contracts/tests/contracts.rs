@@ -546,3 +546,60 @@ fn stage_one_cannot_name_a_merged_adapter() {
          which is above the {EMISSION_MIN_TENTHS} emission floor"
     );
 }
+
+/// An ordinary, correctly-ordered training log must not produce a contradiction.
+///
+/// This guards the layer above the parser. A bug in `tt-formats` once left
+/// `steps_monotonic` defaulting to `false`, which rule `TT-DENSE-007` turns into a
+/// contradiction — so every honest vendor with an ordered log would have been
+/// reported as contradicted. The parser bug is fixed and unit-tested; this asserts
+/// the consequence that actually mattered, because that is the failure a reader
+/// would have seen.
+#[test]
+fn an_ordinary_training_log_produces_no_contradiction() {
+    use tt_core::vocab::OutcomeKind;
+    use tt_facts::{Fact, FactKind, FactSet};
+
+    let mut f = FactSet::new();
+    f.push_fact(
+        Fact::new("F-0001", FactKind::TrainingMetric, "dir::ROOT1")
+            .with("entry_count", 3i64)
+            .with("first_step", 100i64)
+            .with("last_step", 300i64)
+            .with("steps_monotonic", true),
+    );
+    f.push_fact(Fact::new("F-0002", FactKind::CheckpointStep, "dir::ROOT1").with("step", 100i64));
+    f.push_fact(Fact::new("F-0003", FactKind::CheckpointStep, "dir::ROOT1").with("step", 300i64));
+
+    let r = tt_rules::evaluate(&f);
+    let contradictions: Vec<&str> = r
+        .outcomes
+        .iter()
+        .filter(|o| o.kind == OutcomeKind::Contradiction)
+        .map(|o| o.rule_id)
+        .collect();
+    assert!(
+        contradictions.is_empty(),
+        "an ordered training log produced contradictions: {contradictions:?}"
+    );
+}
+
+/// A metric fact that omits the ordering flag entirely must also be safe.
+///
+/// Rules read it with `unwrap_or(true)`, so an absent flag means "no disorder
+/// observed", never "disorder observed". Silence is not evidence against anyone.
+#[test]
+fn an_absent_ordering_flag_is_not_read_as_disorder() {
+    use tt_core::vocab::OutcomeKind;
+    use tt_facts::{Fact, FactKind, FactSet};
+
+    let mut f = FactSet::new();
+    f.push_fact(
+        Fact::new("F-0001", FactKind::TrainingMetric, "dir::ROOT1").with("entry_count", 5i64),
+    );
+    let r = tt_rules::evaluate(&f);
+    assert!(
+        r.outcomes.iter().all(|o| o.kind != OutcomeKind::Contradiction),
+        "an absent flag was read as a contradiction"
+    );
+}

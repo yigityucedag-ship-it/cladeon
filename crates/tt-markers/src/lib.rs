@@ -8,6 +8,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod canary;
 pub mod prng;
+pub mod tint;
 
+pub use canary::{derive_canary, render_with_canary, strip_canary, verify_canary, Canary};
 pub use prng::SplitMix64;
+pub use tint::{build_carrier, detect, tint_tag, Detection, DETECTOR_THRESHOLD_PERCENT};

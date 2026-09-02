@@ -238,7 +238,6 @@ fn note(out: &mut ParseOutput, suppressed: &mut usize, detail: String) {
 // ---------------------------------------------------------------------------
 
 /// The metric series, accumulated in file order.
-#[derive(Default)]
 struct Series {
     entries: i64,
     first_step: Option<i64>,
@@ -249,6 +248,31 @@ struct Series {
     first_loss: Option<String>,
     last_loss: Option<String>,
     tokens: Option<i64>,
+}
+
+/// `Default` is written out rather than derived, because `monotonic` must start
+/// `true`.
+///
+/// A derived `Default` gives it `false`, and the walk below only ever *clears* the
+/// flag — so a perfectly ordered log would end up reporting `steps_monotonic =
+/// false`. Rule `TT-DENSE-007` turns that into a contradiction, which means the
+/// derive would have made the scanner raise a contradiction against every honest
+/// vendor whose steps were in order. A field whose safe value is not the type's
+/// zero value cannot be derived.
+impl Default for Series {
+    fn default() -> Self {
+        Series {
+            entries: 0,
+            first_step: None,
+            last_step: None,
+            prev_step: None,
+            monotonic: true,
+            saw_two_steps: false,
+            first_loss: None,
+            last_loss: None,
+            tokens: None,
+        }
+    }
 }
 
 impl Series {

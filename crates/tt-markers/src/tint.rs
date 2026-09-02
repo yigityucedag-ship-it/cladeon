@@ -45,17 +45,26 @@
 //! the detector would report a marked page as unmarked. Rather than emit a
 //! half-working marker, [`build_carrier`] refuses to mark at all when any base channel
 //! is at an extreme and returns a plain uniform raster, which reads honestly as
-//! `absent`. [`RECOMMENDED_BASE`] is a light grey with room on both sides.
+//! absent. [`RECOMMENDED_BASE`] is a light grey with room on both sides. The cost of
+//! getting this wrong is measured rather than asserted, in
+//! `an_extreme_base_would_lose_half_its_bits_if_it_were_marked`.
 //!
 //! ## Why the detector estimates the base instead of being told it
 //!
 //! [`detect`] receives only a raster and a tag, because that is all Verify has: it
-//! extracts the footer image from a PDF it did not create. Fewer than four percent of
-//! the carrier's bytes are modulated, so the per-channel *mode* is the unmodulated base
-//! whenever the carrier is a flat block — which the schema pins, along with
-//! `expected_carrier_sha256`. A textured carrier would break this estimate, so the
-//! carrier is required to be flat; that requirement lives in the schema and this module
-//! depends on it.
+//! extracts the footer image from a PDF it did not create. So the base is recovered as
+//! the per-channel modal byte value, which is exact whenever unmodulated bytes are the
+//! majority of every channel and the carrier is flat.
+//!
+//! Two requirements follow, and both are enforced rather than hoped for. The carrier
+//! must be flat — the schema pins a uniform 240x40 footer and its
+//! `expected_carrier_sha256`, and a textured carrier would break the estimate. And the
+//! carrier must be at least [`MIN_CARRIER_BYTES`], four times the space the bits
+//! strictly need, so that at most a quarter of any channel is modulated. A carrier of
+//! exactly [`CARRIER_POSITIONS`] bytes would have *every* byte modulated and the modal
+//! value would be whichever of `base±1` the tag happened to favour — a marker that
+//! writes itself and then cannot read itself back. The 240x40 footer modulates 3.1
+//! percent.
 //!
 //! ## Why the two reported numbers are never merged
 //!
@@ -79,6 +88,13 @@ pub const TAG_BITS: usize = 128;
 pub const REPETITION: usize = 7;
 /// Carrier bytes the marker consumes: `TAG_BITS * REPETITION`.
 pub const CARRIER_POSITIONS: usize = TAG_BITS * REPETITION;
+
+/// Smallest carrier this module will mark, four times [`CARRIER_POSITIONS`].
+///
+/// The factor is not decoration. The detector recovers the base from the carrier's own
+/// modal byte value, so unmodulated bytes have to outnumber modulated ones in every
+/// channel. See the module header.
+pub const MIN_CARRIER_BYTES: usize = 4 * CARRIER_POSITIONS;
 
 /// Correlation at or above which [`Detection::matched`] is true, from
 /// `docs/02-SCHEMAS.md` §5 (`detector_threshold_percent`).
@@ -114,7 +130,7 @@ pub struct Detection {
     /// True when `correlation_percent >= DETECTOR_THRESHOLD_PERCENT`.
     pub matched: bool,
     /// How many of the 128 tag bits a majority vote agrees on. A tied vote — every
-    /// position at the base — recovers nothing and is counted as such.
+    /// position sitting at the base — recovers nothing and is counted as such.
     pub bits_recovered: u32,
 }
 
@@ -127,9 +143,9 @@ impl Detection {
 
 /// Derive the 128-bit tag for one report.
 ///
-/// Length-prefixed so that `(case_id, nonce)` pairs cannot be re-split into a different
-/// pair with the same tag. The canary's derivation is frozen in the schema and cannot
-/// do this; nothing freezes the tag's, so it does.
+/// Length-prefixed so that a `(case_id, nonce)` pair cannot be re-split into a
+/// different pair with the same tag. The canary's derivation is frozen in the schema
+/// and cannot do this; nothing freezes the tag's, so it does.
 pub fn tint_tag(evidence_digest: &Digest, case_id: &str, nonce: &str) -> [u8; 16] {
     let mut h = Hasher::new();
     h.update(TAG_DOMAIN);
@@ -148,11 +164,11 @@ pub fn tint_tag(evidence_digest: &Digest, case_id: &str, nonce: &str) -> [u8; 16
 /// True when a `width x height` raster can carry the marker.
 ///
 /// Exposed so the report writer can size the footer without having to know
-/// [`CARRIER_POSITIONS`], and so a too-small footer is caught where it is chosen rather
-/// than discovered later as a missing marker.
+/// [`MIN_CARRIER_BYTES`], and so a too-small footer is caught where it is chosen rather
+/// than discovered later as a mysteriously missing marker.
 pub fn carrier_fits(width: u32, height: u32) -> bool {
     match carrier_capacity(width, height) {
-        Some(capacity) => capacity >= CARRIER_POSITIONS,
+        Some(capacity) => capacity >= MIN_CARRIER_BYTES,
         None => false,
     }
 }
@@ -160,16 +176,16 @@ pub fn carrier_fits(width: u32, height: u32) -> bool {
 /// Build the footer carrier for `tag`.
 ///
 /// Returns a uniform raster with **no marker** — never a partial one — when the raster
-/// cannot hold [`CARRIER_POSITIONS`] distinct positions, or when a channel of `base`
-/// sits at `0` or `255`. A request above [`MAX_CARRIER_PIXELS`] returns an empty
-/// raster; the caller's own size limit should have rejected it first.
+/// is smaller than [`MIN_CARRIER_BYTES`], or when a channel of `base` sits at `0` or
+/// `255`. A request above [`MAX_CARRIER_PIXELS`] returns an empty raster; the caller's
+/// own size limit should have rejected it long before here.
 pub fn build_carrier(tag: &[u8; 16], width: u32, height: u32, base: [u8; 3]) -> Raster {
     let capacity = match carrier_capacity(width, height) {
         Some(capacity) => capacity,
         None => return Raster::new(0, 0, base),
     };
     let mut raster = Raster::new(width, height, base);
-    if capacity < CARRIER_POSITIONS || !base_is_modulable(base) {
+    if capacity < MIN_CARRIER_BYTES || !base_is_modulable(base) {
         return raster;
     }
 
@@ -189,16 +205,17 @@ pub fn build_carrier(tag: &[u8; 16], width: u32, height: u32, base: [u8; 3]) -> 
 
 /// Look for `tag` in `carrier`.
 ///
-/// Reports `absent` for a raster that is empty, oversized, too small to hold the
-/// marker, or whose buffer length disagrees with its dimensions. A raster whose size
-/// has changed since it was built is genuinely no longer the carrier: the positions are
-/// byte offsets into a buffer of a known length, so a crop moves every one of them.
+/// Reports absent for a raster that is empty, oversized, smaller than
+/// [`MIN_CARRIER_BYTES`], or whose buffer length disagrees with its dimensions. A
+/// raster whose size has changed since it was built is genuinely no longer the carrier:
+/// positions are byte offsets computed against a known capacity, so a crop moves every
+/// one of them.
 pub fn detect(carrier: &Raster, tag: &[u8; 16]) -> Detection {
     let capacity = match carrier_capacity(carrier.width, carrier.height) {
         Some(capacity) => capacity,
         None => return Detection::absent(),
     };
-    if capacity < CARRIER_POSITIONS || carrier.rgb.len() != capacity {
+    if capacity < MIN_CARRIER_BYTES || carrier.rgb.len() != capacity {
         return Detection::absent();
     }
 
@@ -210,21 +227,20 @@ pub fn detect(carrier: &Raster, tag: &[u8; 16]) -> Detection {
         let expected: i64 = if tag_bit(tag, bit) { 1 } else { -1 };
         let mut vote: i64 = 0;
         for slot in positions {
-            let channel = slot % 3;
-            let reference = base.get(channel).copied().unwrap_or(0);
+            let reference = base.get(slot % 3).copied().unwrap_or(0);
             let observed = carrier.rgb.get(*slot).copied().unwrap_or(reference);
             let deviation = (i64::from(observed) - i64::from(reference)).signum();
             correlation += expected * deviation;
             vote += deviation;
         }
-        // A tied vote decides nothing. Counting it as a recovered bit would turn a
-        // blank carrier into a half-recovered tag.
+        // A tied vote decides nothing. Counting it as a recovered bit would let a blank
+        // carrier report half a tag.
         if vote != 0 && vote.signum() == expected {
             bits_recovered += 1;
         }
     }
 
-    // |correlation| <= CARRIER_POSITIONS, so the scaling cannot overflow.
+    // |correlation| <= CARRIER_POSITIONS = 896, so the scaling cannot overflow.
     let percent = if correlation <= 0 {
         0
     } else {
@@ -237,14 +253,14 @@ pub fn detect(carrier: &Raster, tag: &[u8; 16]) -> Detection {
     }
 }
 
-/// Channel bytes available in a raster, or `None` when it is larger than
-/// [`MAX_CARRIER_PIXELS`].
+/// Channel bytes available in a raster, or `None` when it holds more than
+/// [`MAX_CARRIER_PIXELS`] pixels.
 fn carrier_capacity(width: u32, height: u32) -> Option<usize> {
     let pixels = u64::from(width) * u64::from(height);
     if pixels > MAX_CARRIER_PIXELS {
         return None;
     }
-    // `pixels * 3` is at most 3 145 728, so this fits every supported `usize`.
+    // At most 3 145 728, so this conversion cannot fail on any supported target.
     usize::try_from(pixels * 3).ok()
 }
 
@@ -263,8 +279,8 @@ fn tag_bit(tag: &[u8; 16], index: usize) -> bool {
 
 /// Seed for the position generator: the tag and the marker version, nothing else.
 ///
-/// Deliberately independent of the carrier's size, so that the same report always lays
-/// its bits out in the same order; only the modulo against the capacity differs.
+/// Deliberately independent of the carrier's size, so a marker-version bump is the only
+/// thing that can reshuffle the layout for a given tag.
 fn position_seed(tag: &[u8; 16]) -> u64 {
     let mut h = Hasher::new();
     h.update(POSITION_DOMAIN);
@@ -281,12 +297,14 @@ fn position_seed(tag: &[u8; 16]) -> u64 {
 /// Distinctness is the point: two bits sharing a byte would each be read as whatever
 /// the second one wrote. A drawn slot that is already taken is resolved by walking
 /// forward to the next free one rather than by redrawing, because rejection sampling
-/// has no bound when the carrier is nearly full, and this loop provably terminates —
-/// at most `CARRIER_POSITIONS - 1` slots are taken and `capacity` is at least
+/// has no bound when the carrier is nearly full, whereas this loop provably terminates
+/// — fewer than `CARRIER_POSITIONS` slots are ever taken and `capacity` is at least
 /// `CARRIER_POSITIONS`, so a free slot always exists within one pass.
 ///
-/// Returns an empty vector when the capacity is too small, so both the writer and the
-/// detector fall through to "no marker" by the same path.
+/// The guard here is `CARRIER_POSITIONS`, not [`MIN_CARRIER_BYTES`]: this function
+/// answers only "can these offsets be distinct", and the headroom the *detector* needs
+/// is a separate rule enforced by its callers. Keeping them separate leaves the
+/// densest packing testable.
 fn slot_positions(tag: &[u8; 16], capacity: usize) -> Vec<usize> {
     if capacity < CARRIER_POSITIONS {
         return Vec::new();
@@ -314,12 +332,9 @@ fn slot_positions(tag: &[u8; 16], capacity: usize) -> Vec<usize> {
 
 /// Per-channel modal byte value, used as the unmodulated base.
 ///
-/// Ties go to the lower value so the estimate is deterministic. On a flat carrier the
-/// mode is exactly the base: at most [`CARRIER_POSITIONS`] of the bytes were moved, and
-/// the smallest carrier this module will mark has 896 bytes of which... it has exactly
-/// 896, so the smallest legal carrier is the one case where the estimate can fail.
-/// That is why the schema fixes a 240x40 footer, 28 800 bytes, of which 3.1 percent are
-/// modulated.
+/// Ties go to the lower value so the estimate is deterministic. It is exact on a flat
+/// carrier of at least [`MIN_CARRIER_BYTES`]; see the module header for why that bound
+/// is the detector's requirement rather than the writer's.
 fn estimate_base(carrier: &Raster) -> [u8; 3] {
     let mut histogram = [[0u32; 256]; 3];
     for (index, byte) in carrier.rgb.iter().enumerate() {
@@ -352,6 +367,7 @@ mod tests {
 
     const W: u32 = 240;
     const H: u32 = 40;
+    const CAPACITY: usize = (W * H * 3) as usize;
 
     fn tag_of(seed: &str) -> [u8; 16] {
         tint_tag(&Digest::of(seed.as_bytes()), "TT-2026-0F3A9C", "0123456789abcdef")
@@ -361,17 +377,21 @@ mod tests {
         build_carrier(&tag_of("report"), W, H, RECOMMENDED_BASE)
     }
 
-    /// Deterministic perturbation, so a failure is reproducible rather than a flake.
+    /// Deterministic perturbation: move `permille` of the pixels by exactly one, in a
+    /// direction fixed per pixel. Both draws happen for every pixel so that raising
+    /// `permille` only ever adds pixels to the set, which makes the degradation curve
+    /// below a nested comparison rather than a comparison of two unrelated samples.
     fn perturb_pixels(raster: &mut Raster, permille: u64, seed: u64) {
         let mut rng = SplitMix64::new(seed);
-        let pixels = raster.pixel_count();
-        for pixel in 0..pixels {
-            if rng.below(1000) < permille {
-                let up = rng.below(2) == 1;
-                for channel in 0..3 {
-                    if let Some(byte) = raster.rgb.get_mut(pixel * 3 + channel) {
-                        *byte = if up { byte.saturating_add(1) } else { byte.saturating_sub(1) };
-                    }
+        for pixel in 0..raster.pixel_count() {
+            let selected = rng.below(1000) < permille;
+            let up = rng.below(2) == 1;
+            if !selected {
+                continue;
+            }
+            for channel in 0..3 {
+                if let Some(byte) = raster.rgb.get_mut(pixel * 3 + channel) {
+                    *byte = if up { byte.saturating_add(1) } else { byte.saturating_sub(1) };
                 }
             }
         }
@@ -384,7 +404,7 @@ mod tests {
         }
     }
 
-    // -- tag ----------------------------------------------------------------------
+    // -- tag ------------------------------------------------------------------------
 
     #[test]
     fn tag_is_deterministic() {
@@ -408,28 +428,43 @@ mod tests {
         assert_ne!(tint_tag(&d, "AB", "C"), tint_tag(&d, "A", "BC"));
     }
 
+    #[test]
+    fn tag_handles_empty_and_non_ascii_fields() {
+        let d = Digest::of(b"evidence");
+        assert_ne!(tint_tag(&d, "", ""), tint_tag(&d, "", "\0"));
+        assert_ne!(tint_tag(&d, "案件", "nonce"), tint_tag(&d, "案", "nonce"));
+    }
+
     // -- construction ---------------------------------------------------------------
 
     #[test]
-    fn positions_are_distinct_and_complete() {
-        let slots = slot_positions(&tag_of("report"), (W * H * 3) as usize);
+    fn positions_are_distinct_and_within_range() {
+        let slots = slot_positions(&tag_of("report"), CAPACITY);
         assert_eq!(slots.len(), CARRIER_POSITIONS);
         let mut sorted = slots.clone();
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), CARRIER_POSITIONS, "positions overlap");
-        assert!(sorted.iter().all(|s| *s < (W * H * 3) as usize));
+        assert!(sorted.iter().all(|s| *s < CAPACITY));
     }
 
+    /// The densest packing the position picker allows: every slot used exactly once.
+    /// This is the case where a probing bug would show up as a duplicate.
     #[test]
-    fn positions_are_distinct_at_the_minimum_carrier_size() {
-        // Exactly 896 bytes of capacity: every slot must be used exactly once, which
-        // is the case that would expose a probing bug.
+    fn positions_are_distinct_when_the_carrier_is_exactly_full() {
         let slots = slot_positions(&tag_of("report"), CARRIER_POSITIONS);
         let mut sorted = slots.clone();
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), CARRIER_POSITIONS);
+        assert_eq!(sorted.first(), Some(&0));
+        assert_eq!(sorted.last(), Some(&(CARRIER_POSITIONS - 1)));
+    }
+
+    #[test]
+    fn positions_are_empty_below_the_bit_count() {
+        assert!(slot_positions(&tag_of("report"), CARRIER_POSITIONS - 1).is_empty());
+        assert!(slot_positions(&tag_of("report"), 0).is_empty());
     }
 
     #[test]
@@ -476,16 +511,28 @@ mod tests {
     }
 
     #[test]
-    fn detects_across_many_tags_and_carrier_sizes() {
-        for size in [(W, H), (32, 10), (100, 100), (896, 1), (1, 300)] {
+    fn detects_across_many_tags_and_carrier_shapes() {
+        for size in [(W, H), (64, 32), (100, 100), (1195, 1), (1, 1200)] {
+            assert!(carrier_fits(size.0, size.1), "{size:?} should fit");
             for i in 0..8u32 {
                 let tag = tag_of(&format!("case-{i}"));
                 let carrier = build_carrier(&tag, size.0, size.1, RECOMMENDED_BASE);
                 let d = detect(&carrier, &tag);
-                assert!(d.matched, "{size:?} tag {i} did not detect: {d:?}");
-                assert_eq!(d.correlation_percent, 100);
-                assert_eq!(d.bits_recovered, TAG_BITS as u32);
+                assert_eq!(d.correlation_percent, 100, "{size:?} tag {i}: {d:?}");
+                assert_eq!(d.bits_recovered, TAG_BITS as u32, "{size:?} tag {i}");
+                assert!(d.matched);
             }
+        }
+    }
+
+    #[test]
+    fn detects_across_many_base_colours() {
+        for base in [[1u8, 1, 1], [17, 200, 91], [128, 128, 128], [242, 242, 242], [254, 254, 254]]
+        {
+            let tag = tag_of("report");
+            let d = detect(&build_carrier(&tag, W, H, base), &tag);
+            assert_eq!(d.correlation_percent, 100, "base {base:?}: {d:?}");
+            assert_eq!(d.bits_recovered, TAG_BITS as u32);
         }
     }
 
@@ -504,34 +551,42 @@ mod tests {
         }
     }
 
-    /// The marker should degrade rather than snap. Half the pixels moving by one is
-    /// far past anything email transport does, and it must still not read as a clean
-    /// detection of some *other* tag.
+    /// The marker should degrade rather than snap, and degrading must never turn into
+    /// a clean detection of some *other* tag.
     #[test]
-    fn degrades_gracefully_under_heavy_perturbation() {
-        let mut previous = 100u32;
+    fn degrades_monotonically_under_heavier_perturbation() {
+        let mut previous = 101u32;
         for permille in [0u64, 100, 300, 500, 800] {
             let mut carrier = marked();
             perturb_pixels(&mut carrier, permille, 7);
             let d = detect(&carrier, &tag_of("report"));
-            assert!(d.correlation_percent <= previous, "correlation rose at {permille}");
+            assert!(
+                d.correlation_percent <= previous,
+                "correlation rose to {} at {permille} permille",
+                d.correlation_percent
+            );
             previous = d.correlation_percent;
-            assert_eq!(detect(&carrier, &tag_of("other")).matched, false);
+            assert!(!detect(&carrier, &tag_of("other")).matched);
         }
+        assert!(previous < 100, "800 permille of noise left the marker untouched");
     }
 
     /// Copying a marker from one report into another must not succeed. This is the
-    /// attack the tag-derived positions exist to stop.
+    /// attack that tag-derived positions exist to stop.
     #[test]
     fn a_carrier_built_for_another_tag_does_not_match() {
         let carrier = marked();
+        let mut worst_correlation = 0u32;
+        let mut worst_bits = 0u32;
         for i in 0..64u32 {
             let other = tag_of(&format!("other-{i}"));
             let d = detect(&carrier, &other);
             assert!(!d.matched, "tag {i} matched a foreign carrier: {d:?}");
-            assert!(d.correlation_percent < 20, "tag {i} correlated at {}", d.correlation_percent);
-            assert!(d.bits_recovered < 32, "tag {i} recovered {} bits", d.bits_recovered);
+            worst_correlation = worst_correlation.max(d.correlation_percent);
+            worst_bits = worst_bits.max(d.bits_recovered);
         }
+        assert!(worst_correlation < 20, "foreign tags correlated up to {worst_correlation}");
+        assert!(worst_bits < 40, "foreign tags recovered up to {worst_bits} bits");
     }
 
     #[test]
@@ -547,14 +602,14 @@ mod tests {
         }
     }
 
-    // -- false positives --------------------------------------------------------------
+    // -- false positives ---------------------------------------------------------------
 
     #[test]
     fn flat_rasters_never_false_positive() {
         let mut false_positives = 0u32;
         let mut trials = 0u32;
         for base in [0u8, 1, 17, 128, 200, 242, 254, 255] {
-            for size in [(W, H), (32, 10), (64, 64), (896, 1)] {
+            for size in [(W, H), (64, 32), (64, 64), (1195, 1)] {
                 let flat = Raster::new(size.0, size.1, [base, base, base]);
                 for i in 0..8u32 {
                     let d = detect(&flat, &tag_of(&format!("case-{i}")));
@@ -567,12 +622,12 @@ mod tests {
                 }
             }
         }
-        assert!(trials >= 256);
+        assert_eq!(trials, 256);
         assert_eq!(false_positives, 0, "{false_positives} of {trials} flat rasters matched");
     }
 
     /// Harder than a flat raster: dithered noise with no marker at all. A detector that
-    /// counted agreement instead of correlating would light up here.
+    /// counted bare agreement instead of correlating would light up here.
     #[test]
     fn noisy_unmarked_rasters_never_false_positive() {
         let mut worst = 0u32;
@@ -594,7 +649,7 @@ mod tests {
         quantise(&mut carrier, 8);
         let d = detect(&carrier, &tag_of("report"));
         assert!(!d.matched, "quantised carrier still matched: {d:?}");
-        // 241, 242 and 243 all land on 240, so nothing at all survives.
+        // 241, 242 and 243 all land on 240, so nothing survives at all.
         assert_eq!(d.correlation_percent, 0);
         assert_eq!(d.bits_recovered, 0);
     }
@@ -613,14 +668,12 @@ mod tests {
     #[test]
     fn cropping_the_carrier_destroys_the_marker() {
         let carrier = marked();
-        let rows = (H - 1) as usize;
-        let cropped = Raster::from_rgb(
-            W,
-            H - 1,
-            carrier.rgb.get(..rows * (W as usize) * 3).unwrap_or(&[]).to_vec(),
-        )
-        .expect("crop keeps a whole number of rows");
-        assert!(!detect(&cropped, &tag_of("report")).matched);
+        let kept = ((H - 1) as usize) * (W as usize) * 3;
+        let cropped =
+            Raster::from_rgb(W, H - 1, carrier.rgb.get(..kept).unwrap_or(&[]).to_vec())
+                .expect("a whole number of rows is a valid raster");
+        let d = detect(&cropped, &tag_of("report"));
+        assert!(!d.matched, "cropped carrier still matched: {d:?}");
     }
 
     #[test]
@@ -629,24 +682,26 @@ mod tests {
         assert!(!detect(&flat, &tag_of("report")).matched);
     }
 
-    // -- refusals ---------------------------------------------------------------------
+    // -- refusals -----------------------------------------------------------------------
 
     #[test]
     fn a_carrier_too_small_is_left_uniform() {
-        for size in [(0u32, 0u32), (1, 1), (10, 10), (16, 18), (895, 1)] {
+        // The last two hold more than CARRIER_POSITIONS bytes but less than the
+        // headroom the detector needs, which is the interesting half of this rule.
+        for size in [(0u32, 0u32), (1, 1), (10, 10), (16, 18), (298, 1), (1194, 1)] {
             assert!(!carrier_fits(size.0, size.1), "{size:?} unexpectedly fits");
             let carrier = build_carrier(&tag_of("report"), size.0, size.1, RECOMMENDED_BASE);
             assert_eq!(carrier, Raster::new(size.0, size.1, RECOMMENDED_BASE));
-            let d = detect(&carrier, &tag_of("report"));
-            assert_eq!(d, Detection::absent());
+            assert_eq!(detect(&carrier, &tag_of("report")), Detection::absent());
         }
     }
 
     #[test]
-    fn the_minimum_fitting_carrier_is_exactly_896_bytes() {
-        assert!(carrier_fits(299, 1)); // 897 bytes
-        assert!(!carrier_fits(298, 1)); // 894 bytes
+    fn the_fitting_threshold_is_exactly_min_carrier_bytes() {
         assert_eq!(CARRIER_POSITIONS, 896);
+        assert_eq!(MIN_CARRIER_BYTES, 3584);
+        assert!(carrier_fits(1195, 1)); // 3585 bytes
+        assert!(!carrier_fits(1194, 1)); // 3582 bytes
     }
 
     #[test]
@@ -658,15 +713,15 @@ mod tests {
         }
     }
 
-    /// The reason the refusal above exists: if the extreme base *were* marked, half of
-    /// every saturated channel's bits would be unreadable. Demonstrated by hand so the
-    /// rule does not survive as folklore.
+    /// Why that refusal exists. Marking a saturated base by hand shows the failure the
+    /// rule prevents: half the bits vanish and the detector reports a marked page as
+    /// unmarked. Measured rather than asserted, so the rule does not survive as
+    /// folklore.
     #[test]
     fn an_extreme_base_would_lose_half_its_bits_if_it_were_marked() {
         let tag = tag_of("report");
-        let capacity = (W * H * 3) as usize;
         let mut carrier = Raster::new(W, H, [255, 255, 255]);
-        for (bit, positions) in slot_positions(&tag, capacity).chunks(REPETITION).enumerate() {
+        for (bit, positions) in slot_positions(&tag, CAPACITY).chunks(REPETITION).enumerate() {
             let delta: i8 = if tag_bit(&tag, bit) { 1 } else { -1 };
             for slot in positions {
                 if let Some(byte) = carrier.rgb.get_mut(*slot) {
@@ -675,7 +730,11 @@ mod tests {
             }
         }
         let d = detect(&carrier, &tag);
-        assert!(d.correlation_percent < 70, "saturated carrier read at {}", d.correlation_percent);
+        assert!(
+            d.correlation_percent < DETECTOR_THRESHOLD_PERCENT,
+            "saturated carrier read at {}",
+            d.correlation_percent
+        );
         assert!(d.bits_recovered < TAG_BITS as u32);
     }
 
@@ -686,28 +745,31 @@ mod tests {
         assert_eq!(carrier.height, 0);
         assert!(carrier.rgb.is_empty());
         assert!(!carrier_fits(65535, 65535));
+        assert!(!carrier_fits(u32::MAX, u32::MAX));
     }
 
     #[test]
     fn a_raster_whose_buffer_disagrees_with_its_dimensions_is_absent() {
-        let mut broken = marked();
-        broken.rgb.truncate(broken.rgb.len() - 1);
-        assert_eq!(detect(&broken, &tag_of("report")), Detection::absent());
+        let mut short = marked();
+        short.rgb.truncate(CAPACITY - 1);
+        assert_eq!(detect(&short, &tag_of("report")), Detection::absent());
 
-        let oversized = Raster { width: W, height: H, rgb: vec![242; (W * H * 3) as usize + 1] };
-        assert_eq!(detect(&oversized, &tag_of("report")), Detection::absent());
+        let long = Raster { width: W, height: H, rgb: vec![242; CAPACITY + 1] };
+        assert_eq!(detect(&long, &tag_of("report")), Detection::absent());
 
-        let huge = Raster { width: 65535, height: 65535, rgb: Vec::new() };
-        assert_eq!(detect(&huge, &tag_of("report")), Detection::absent());
+        let lying = Raster { width: u32::MAX, height: u32::MAX, rgb: Vec::new() };
+        assert_eq!(detect(&lying, &tag_of("report")), Detection::absent());
     }
 
     #[test]
     fn an_empty_raster_is_absent() {
-        let empty = Raster::new(0, 0, RECOMMENDED_BASE);
-        assert_eq!(detect(&empty, &tag_of("report")), Detection::absent());
+        assert_eq!(
+            detect(&Raster::new(0, 0, RECOMMENDED_BASE), &tag_of("report")),
+            Detection::absent()
+        );
     }
 
-    // -- base estimation -----------------------------------------------------------
+    // -- base estimation ---------------------------------------------------------------
 
     #[test]
     fn base_estimate_finds_the_flat_colour_under_marking_and_noise() {
@@ -719,7 +781,7 @@ mod tests {
 
     #[test]
     fn base_estimate_is_per_channel() {
-        let carrier = Raster::new(4, 4, [1, 2, 3]);
-        assert_eq!(estimate_base(&carrier), [1, 2, 3]);
+        assert_eq!(estimate_base(&Raster::new(4, 4, [1, 2, 3])), [1, 2, 3]);
+        assert_eq!(estimate_base(&Raster::new(0, 0, [1, 2, 3])), [0, 0, 0]);
     }
 }
