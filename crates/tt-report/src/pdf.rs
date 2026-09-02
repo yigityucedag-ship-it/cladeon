@@ -54,7 +54,6 @@
 //! are constants here because they bound *our* output, not vendor input.
 
 use tt_core::error::{TtError, TtResult};
-use tt_core::hash::Digest;
 use tt_core::limits::Limits;
 use tt_core::raster::Raster;
 
@@ -830,7 +829,7 @@ impl PdfBuilder {
         // Binary comment: tells transports this file is not plain text.
         buf.extend_from_slice(b"%\xE2\xE3\xCF\xD3\n");
 
-        let mut begin = |buf: &mut Vec<u8>, offsets: &mut Vec<usize>, n: usize| {
+        let begin = |buf: &mut Vec<u8>, offsets: &mut Vec<usize>, n: usize| {
             debug_assert_eq!(offsets.len() + 1, n);
             offsets.push(buf.len());
             buf.extend_from_slice(n.to_string().as_bytes());
@@ -1661,6 +1660,7 @@ fn hex_value(c: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tt_core::hash::Digest;
 
     fn doc_id() -> Digest {
         Digest::of(b"tt-report::pdf test document")
@@ -1996,7 +1996,11 @@ mod tests {
         let pages = b.page_count();
         assert!(pages > 1);
         let text = extract_text(&pdf).unwrap();
-        assert_eq!(text.matches("\nKey\n").count(), pages);
+        // Count header *lines* rather than matching on "\nKey\n": `extract_text`
+        // strips leading newlines, so the header on the first page has nothing
+        // before it and a delimiter-based match silently loses one occurrence.
+        let header_lines = text.lines().filter(|l| l.trim() == "Key").count();
+        assert_eq!(header_lines, pages, "the header must repeat on every page");
         assert!(text.contains("row 199"));
     }
 
