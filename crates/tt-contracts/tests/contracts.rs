@@ -603,3 +603,88 @@ fn an_absent_ordering_flag_is_not_read_as_disorder() {
         "an absent flag was read as a contradiction"
     );
 }
+
+/// A system that wraps somebody else's API has no local weights *by design*, and
+/// must not be capped for it on the claims that describe what it actually is.
+///
+/// Both caps below were once applied in the wrong direction, and each capped the
+/// single claim the evidence supported: CAP-QUESTIONNAIRE fired on every claim
+/// whenever no checkpoint was present, and CAP-API-ONLY - defined by the plan as
+/// "API behaviour only, FOR A WEIGHT-TRAINING CLAIM" - was applied to the API claim
+/// itself. The effect was a scanner that could see a full retrieval chain and an
+/// external endpoint and still report nothing.
+#[test]
+fn an_api_and_rag_system_is_not_capped_for_having_no_weights() {
+    use tt_core::vocab::{CapId, Claim, InferenceAugmentation};
+    use tt_facts::{Fact, FactKind, FactSet};
+
+    let mut f = FactSet::new();
+    // The vendor claims to have trained weights, and also runs retrieval.
+    f.declared.weight_origin = Some(tt_core::vocab::WeightOrigin::RandomInitializationClaimed);
+    f.declared.inference_augmentation = vec![InferenceAugmentation::Rag];
+    f.push_fact(
+        Fact::new("F-0001", FactKind::RetrievalTrace, "dir::ROOT1")
+            .with("entry_count", 25i64)
+            .with("request_level_chain", true),
+    );
+    f.push_fact(Fact::new("F-0002", FactKind::RetrievalIndex, "dir::ROOT1").with("store", "chroma"));
+    f.push_fact(
+        Fact::new("F-0003", FactKind::ProviderEndpoint, "dir::ROOT2").with("host", "api.openai.com"),
+    );
+    f.push_fact(Fact::new("F-0004", FactKind::PromptTemplate, "dir::ROOT3").with("preview", "{context}"));
+
+    let r = tt_rules::evaluate(&f);
+    let rag = r.claim_scores.iter().find(|s| s.claim == Claim::Rag).unwrap();
+    assert!(
+        !rag.caps.iter().any(|c| c.cap_id == CapId::Questionnaire),
+        "the RAG claim was capped as questionnaire-only for lacking model weights"
+    );
+    assert!(
+        !rag.caps.iter().any(|c| c.cap_id == CapId::ApiOnly),
+        "the RAG claim was capped by an API-behaviour cap"
+    );
+    assert!(
+        rag.score_tenths > CapId::Questionnaire.max_tenths(),
+        "a full retrieval chain scored no better than a questionnaire ({} tenths)",
+        rag.score_tenths
+    );
+
+    let api = r.claim_scores.iter().find(|s| s.claim == Claim::ExternalApi).unwrap();
+    assert!(
+        !api.caps.iter().any(|c| c.cap_id == CapId::ApiOnly),
+        "CAP-API-ONLY binds weight-training claims, not the API claim it supports"
+    );
+}
+
+/// The same caps must still bind the claims they were written for.
+///
+/// The fix above narrowed their scope, so this asserts the narrowing did not turn
+/// them off: a weight-training claim resting on nothing but API behaviour is still
+/// capped, which is the whole reason the cap exists.
+#[test]
+fn weight_training_claims_are_still_capped_by_api_only_evidence() {
+    use tt_core::vocab::{CapId, Claim, WeightOrigin};
+    use tt_facts::{Fact, FactKind, FactSet};
+
+    let mut f = FactSet::new();
+    f.declared.weight_origin = Some(WeightOrigin::RandomInitializationClaimed);
+    f.push_fact(
+        Fact::new("F-0001", FactKind::ProviderEndpoint, "dir::ROOT1").with("host", "api.openai.com"),
+    );
+
+    let r = tt_rules::evaluate(&f);
+    let scratch = r.claim_scores.iter().find(|s| s.claim == Claim::Scratch).unwrap();
+    assert!(
+        scratch
+            .caps
+            .iter()
+            .any(|c| c.cap_id == CapId::ApiOnly || c.cap_id == CapId::Questionnaire),
+        "a from-scratch claim backed only by an API endpoint must still be capped: {:?}",
+        scratch.caps
+    );
+    assert!(
+        scratch.score_tenths <= CapId::ApiOnly.max_tenths(),
+        "scratch reached {} tenths on API evidence alone",
+        scratch.score_tenths
+    );
+}

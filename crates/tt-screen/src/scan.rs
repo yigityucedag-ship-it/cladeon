@@ -152,7 +152,11 @@ pub fn run(req: &ScanRequest, cancel: &dyn Fn() -> bool) -> TtResult<ScanResult>
             }
         };
 
-        let Some(result) = dispatch::parse(a.artifact_type, &bytes, &req.limits, Some(a.size_bytes))
+        // The base name only: dispatch routes several families by name, and it must
+        // never see a real path.
+        let file_name = a.path_alias.rsplit('/').next().unwrap_or("").to_string();
+        let Some(result) =
+            dispatch::parse(a.artifact_type, &file_name, &bytes, &req.limits, Some(a.size_bytes))
         else {
             continue;
         };

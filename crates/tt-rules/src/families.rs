@@ -1434,8 +1434,13 @@ pub fn external_api(ctx: &mut Ctx) {
             "Correlating these requests with provider-side records requires evidence from \
              the provider account.",
         );
-        if ctx.f.declared.declares_weight_training() && traces.is_empty() {
-            ctx.cap(Claim::ExternalApi, CapId::ApiOnly, "TT-API-006");
+        // The cap is defined as "API behaviour only, FOR A WEIGHT-TRAINING CLAIM",
+        // so it binds the training claims, not the API claim. Applying it to
+        // `ExternalApi` would cap the one claim this evidence actually supports.
+        if ctx.f.declared.declares_weight_training() && !local_weights {
+            for c in WEIGHT_TRAINING_CLAIMS {
+                ctx.cap(*c, CapId::ApiOnly, "TT-API-006");
+            }
         }
     }
 }
@@ -1783,8 +1788,25 @@ pub fn cross_facet(ctx: &mut Ctx) {
 // Global caps that depend on the whole picture
 // ===========================================================================
 
+/// Claims that assert something was done to a model's weights.
+///
+/// The distinction matters for caps. A retrieval or external-API claim is *about*
+/// not training weights, so the absence of weights is not a gap in its evidence -
+/// it is the thing being claimed. Capping those claims for lacking checkpoints
+/// would penalise a vendor for the system being exactly what they said it was.
+const WEIGHT_TRAINING_CLAIMS: &[Claim] = &[
+    Claim::UnmergedLora,
+    Claim::MergedAdapter,
+    Claim::DenseFinetune,
+    Claim::ContinuedPretraining,
+    Claim::Distillation,
+    Claim::Scratch,
+];
+
 pub fn global_caps(ctx: &mut Ctx) {
-    // Questionnaire-only: nothing but text records in scope.
+    // Nothing but text records in scope. Applied only to weight-training claims:
+    // a system that wraps somebody else's API has no local weights by design, and
+    // `TT-API-005` scores their absence as supporting evidence rather than a gap.
     let structural = ctx.f.artifacts.iter().any(|a| {
         matches!(
             a.artifact_type,
@@ -1792,7 +1814,7 @@ pub fn global_caps(ctx: &mut Ctx) {
         )
     });
     if !structural {
-        for c in Claim::ALL {
+        for c in WEIGHT_TRAINING_CLAIMS {
             ctx.cap(*c, CapId::Questionnaire, "TT-INV-008");
         }
     }

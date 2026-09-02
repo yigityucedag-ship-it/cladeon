@@ -25,14 +25,18 @@ pub fn read_need(t: ArtifactType, limits: &Limits) -> ReadNeed {
 
 /// Parse an artifact of known type.
 ///
-/// `bytes` is whatever [`read_need`] asked for. `file_size` is the full size on
-/// disk, which SafeTensors uses to check that declared tensor offsets fall inside
-/// the file — a check that cannot be made from a prefix alone.
+/// `bytes` is whatever [`read_need`] asked for. `file_name` is the base name only,
+/// never a path: several families (dependency manifests, deployment files,
+/// retrieval stores) are distinguished by name rather than by content, and
+/// `requirements.txt` and `Cargo.lock` need different readers despite sharing a
+/// type. `file_size` is the full size on disk, which SafeTensors uses to check that
+/// declared tensor offsets fall inside the file — a check a prefix cannot make.
 ///
 /// Returns `None` when the type has no parser, which is the correct outcome for
 /// opaque and unrecognised artifacts.
 pub fn parse(
     t: ArtifactType,
+    file_name: &str,
     bytes: &[u8],
     limits: &Limits,
     file_size: Option<u64>,
@@ -46,7 +50,25 @@ pub fn parse(
         ArtifactType::SafeTensors => crate::safetensors::parse_header(bytes, limits, file_size),
         ArtifactType::Gguf => crate::gguf::parse_metadata(bytes, limits),
         ArtifactType::TrainingLog => crate::logs::parse_tail(bytes, limits, true),
-        ArtifactType::RetrievalTrace => crate::logs::parse_tail(bytes, limits, true),
+        // A retrieval trace routes to `rag`, not `logs`: the question asked of it is
+        // whether a query-to-scored-chunks chain exists, which a metric parser
+        // cannot answer.
+        ArtifactType::RetrievalTrace => crate::rag::parse_retrieval_trace(bytes, limits),
+
+        ArtifactType::DependencyLockfile => match crate::deps::parse_by_name(file_name, bytes, limits) {
+            Some(r) => r,
+            None => return None,
+        },
+        ArtifactType::DeploymentManifest | ArtifactType::ServingConfig => {
+            match crate::deploy::parse_by_name(file_name, bytes, limits) {
+                Some(r) => r,
+                None => return None,
+            }
+        }
+        ArtifactType::VectorIndex => match crate::rag::parse_by_name(file_name, bytes, limits) {
+            Some(r) => r,
+            None => return None,
+        },
 
         ArtifactType::TransformersConfig
         | ArtifactType::GenerationConfig
@@ -89,7 +111,7 @@ mod tests {
         for t in [ArtifactType::OpaqueSerialization, ArtifactType::Unrecognised, ArtifactType::PlainText]
         {
             assert!(
-                parse(t, b"anything", &lim(), None).is_none(),
+                parse(t, "x", b"anything", &lim(), None).is_none(),
                 "{t} must never reach a parser"
             );
         }
@@ -99,25 +121,25 @@ mod tests {
     fn a_pickle_file_is_not_opened_even_with_valid_looking_content() {
         // The bytes below are a real pickle opcode sequence. Nothing may read them.
         let pickle = b"\x80\x04\x95\x00\x00\x00\x00\x00\x00\x00\x00}\x94.";
-        assert!(parse(ArtifactType::OpaqueSerialization, pickle, &lim(), None).is_none());
+        assert!(parse(ArtifactType::OpaqueSerialization, "model.bin", pickle, &lim(), None).is_none());
     }
 
     #[test]
     fn known_types_route_to_a_parser() {
         let adapter = br#"{"peft_type":"LORA","r":8}"#;
-        assert!(parse(ArtifactType::PeftAdapterConfig, adapter, &lim(), None).unwrap().is_ok());
+        assert!(parse(ArtifactType::PeftAdapterConfig, "adapter_config.json", adapter, &lim(), None).unwrap().is_ok());
 
         let cfg = br#"{"model_type":"llama"}"#;
-        assert!(parse(ArtifactType::TransformersConfig, cfg, &lim(), None).unwrap().is_ok());
+        assert!(parse(ArtifactType::TransformersConfig, "config.json", cfg, &lim(), None).unwrap().is_ok());
 
         let mut st = 16u64.to_le_bytes().to_vec();
         st.extend_from_slice(br#"{"__metadata__":{}}"#);
-        assert!(parse(ArtifactType::SafeTensors, &st, &lim(), Some(st.len() as u64)).is_some());
+        assert!(parse(ArtifactType::SafeTensors, "m.safetensors", &st, &lim(), Some(st.len() as u64)).is_some());
     }
 
     #[test]
     fn a_parser_failure_is_returned_not_swallowed() {
-        let r = parse(ArtifactType::PeftAdapterConfig, b"{not json", &lim(), None);
+        let r = parse(ArtifactType::PeftAdapterConfig, "adapter_config.json", b"{not json", &lim(), None);
         assert!(matches!(r, Some(Err(_))), "a malformed config must surface as an error");
     }
 
@@ -147,7 +169,7 @@ mod tests {
             ArtifactType::TrainingLog,
         ] {
             assert!(
-                parse(t, b"{}", &lim(), None).is_some(),
+                parse(t, "config.json", b"{}", &lim(), None).is_some(),
                 "{t} lost its parser"
             );
         }
