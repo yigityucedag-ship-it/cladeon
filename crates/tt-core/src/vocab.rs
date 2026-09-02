@@ -339,6 +339,16 @@ str_enum! {
         MergeUnreproducible => "CAP-MERGE-UNREPRO",
         CptNoObjective => "CAP-CPT-NO-OBJ",
         ScratchNoStepZero => "CAP-SCRATCH-NO-ZERO",
+        /// Added during implementation, not present in the original plan.
+        ///
+        /// The plan requires that correlated evidence not be counted repeatedly - a
+        /// README, a config and a generated model card from one directory are one
+        /// source, not three confirmations. Taking the maximum per anchor removes
+        /// double-counting *within* an anchor but not *across* anchors: a single
+        /// chatty config could otherwise fill several anchors on its own and reach
+        /// "corroborated". This cap makes the requirement explicit - corroboration
+        /// needs more than one independent source.
+        SingleSource => "CAP-SINGLE-SOURCE",
     }
 }
 
@@ -352,6 +362,7 @@ impl CapId {
             CapId::MergeUnreproducible => 600,
             CapId::CptNoObjective => 400,
             CapId::ScratchNoStepZero => 450,
+            CapId::SingleSource => 849,
         }
     }
     pub fn render(self) -> &'static str {
@@ -367,6 +378,9 @@ impl CapId {
             }
             CapId::ScratchNoStepZero => {
                 "Random-initialisation claim without step-zero and intermediate checkpoints"
+            }
+            CapId::SingleSource => {
+                "All achieved anchors trace back to a single source, so the evidence corroborates itself rather than being corroborated"
             }
         }
     }
@@ -538,6 +552,16 @@ str_enum! {
         Complete => "complete",
         Partial => "partial",
         Minimal => "minimal",
+    }
+}
+
+/// Absence of information is *minimal* coverage, never complete.
+///
+/// A default of `Complete` would mean a struct that was built but never populated
+/// claimed full coverage of a scan that never happened.
+impl Default for CoverageStatus {
+    fn default() -> Self {
+        CoverageStatus::Minimal
     }
 }
 
