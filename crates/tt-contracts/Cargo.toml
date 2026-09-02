@@ -13,3 +13,4 @@ authors.workspace = true
 tt-core.workspace = true
 tt-facts.workspace = true
 tt-rules.workspace = true
+tt-fixtures.workspace = true

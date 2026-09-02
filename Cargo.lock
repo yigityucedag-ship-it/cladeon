@@ -434,6 +434,7 @@ version = "0.1.0"
 dependencies = [
  "tt-core",
  "tt-facts",
+ "tt-fixtures",
  "tt-rules",
 ]
 

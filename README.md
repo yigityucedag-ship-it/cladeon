@@ -17,7 +17,7 @@ Stage-1 MVP, CLI-first, working end to end.
 
 | | |
 |---|---|
-| Tests | **647**, all passing |
+| Tests | **648**, all passing |
 | Compiler warnings | **0** |
 | Release binaries | `tt-screen` 0.79 MB, `tt-verify` 0.54 MB, `tt-fixtures` 0.35 MB |
 | Third-party dependencies | **4** — `sha2`, `ed25519-dalek`, `getrandom`, `clap` |
@@ -148,8 +148,11 @@ wording.
       tt-fixtures/    golden corpus         tt-contracts/  workspace-wide invariants
     docs/             frozen Phase-0 contracts
 
-`docs/00-FROZEN-VOCABULARY.md` is the contract a buyer reads. A test fails the build if
-the code drifts from it.
+`docs/00-FROZEN-VOCABULARY.md` is the contract a buyer reads, `03-THREAT-MODEL.md` says
+what the design does and does not defend against, and `04-ACCEPTANCE-TESTS.md` maps
+every promise to the test that enforces it. Tests fail the build if the code drifts
+from any of them - including one that checks every test the acceptance document names
+actually exists.
 
 ---
 

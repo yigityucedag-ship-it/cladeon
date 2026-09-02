@@ -704,3 +704,91 @@ fn weight_training_claims_are_still_capped_by_api_only_evidence() {
         scratch.score_tenths
     );
 }
+
+/// Every test the acceptance document names must actually exist.
+///
+/// An acceptance document is a claim about what is covered, and a claim about
+/// coverage is exactly the kind that rots quietly: a test gets renamed, the table
+/// still lists it, and the document keeps asserting a guarantee nobody checks any
+/// more. This makes that impossible.
+///
+/// The document also cites corpus-case names and vocabulary values in backticks, so
+/// an identifier is accepted if it is a test function, a fixture case, or a value
+/// from the frozen vocabulary. Anything else is a stale reference.
+#[test]
+fn every_test_named_in_the_acceptance_document_exists() {
+    use tt_core::vocab::*;
+
+    let doc = read(&repo_root().join("docs/04-ACCEPTANCE-TESTS.md"));
+
+    // Collect every `snake_case` identifier the document cites.
+    let mut cited: Vec<String> = Vec::new();
+    let mut in_tick = false;
+    let mut cur = String::new();
+    for ch in doc.chars() {
+        if ch == '`' {
+            if in_tick {
+                let t = cur.trim().to_string();
+                let looks_like_ident = t.len() > 8
+                    && t.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                    && t.contains('_');
+                if looks_like_ident && !cited.contains(&t) {
+                    cited.push(t);
+                }
+                cur.clear();
+            }
+            in_tick = !in_tick;
+        } else if in_tick {
+            cur.push(ch);
+        }
+    }
+    assert!(cited.len() > 50, "only {} identifiers found; the extractor is broken", cited.len());
+
+    // Every test function in the workspace, INCLUDING this file.
+    //
+    // `rust_sources` excludes `tt-contracts` so the forbidden-string scanners do not
+    // find themselves. That exclusion is right for those checks and wrong for this
+    // one, which needs to see its own crate's tests - so it is added back here
+    // rather than by widening `rust_sources` and breaking the other guards.
+    let mut sources = String::new();
+    for p in rust_sources() {
+        sources.push_str(&read(&p));
+    }
+    sources.push_str(&read(&repo_root().join("crates/tt-contracts/tests/contracts.rs")));
+
+    // Names that are legitimately not tests.
+    let mut allowed: Vec<String> =
+        tt_fixtures::cases().iter().map(|c| c.name.to_string()).collect();
+    let mut vocab: Vec<&'static str> = Vec::new();
+    vocab.extend(SupportBand::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(Claim::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(Facet::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(WeightOrigin::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(ParameterUpdate::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(TrainingStage::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(InferenceAugmentation::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(IntegrityStatus::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(ChallengeStatus::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(MarkerStatus::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(CoverageStatus::ALL.iter().map(|v| v.as_str()));
+    vocab.extend(OutcomeKind::ALL.iter().map(|v| v.as_str()));
+    allowed.extend(vocab.into_iter().map(String::from));
+    allowed.push("acceptance_version".into());
+    allowed.push("threat_model_version".into());
+    allowed.push("skipped_by_submitter".into());
+    allowed.push("out_of_scope_path".into());
+    allowed.push(ASSURANCE_LEVEL.to_string());
+
+    let stale: Vec<&String> = cited
+        .iter()
+        .filter(|n| !sources.contains(&format!("fn {n}(")) && !allowed.contains(n))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        concat!(
+            "docs/04-ACCEPTANCE-TESTS.md names these, but they are neither tests, ",
+            "fixture cases, nor vocabulary values: {:?}"
+        ),
+        stale
+    );
+}
