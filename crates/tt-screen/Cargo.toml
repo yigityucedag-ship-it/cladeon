@@ -1,0 +1,19 @@
+[package]
+name = "tt-screen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tt-core.workspace = true
+tt-facts.workspace = true
+tt-inventory.workspace = true
+tt-formats.workspace = true
+tt-rules.workspace = true
+tt-report.workspace = true
+tt-markers.workspace = true
+tt-bundle.workspace = true
+tt-case.workspace = true
+clap.workspace = true

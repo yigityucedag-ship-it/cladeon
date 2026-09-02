@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tt-core",
+    "crates/tt-facts",
+    "crates/tt-inventory",
+    "crates/tt-formats",
+    "crates/tt-rules",
+    "crates/tt-markers",
+    "crates/tt-report",
+    "crates/tt-bundle",
+    "crates/tt-case",
+    "crates/tt-screen",
+    "crates/tt-verify",
+    "crates/tt-fixtures",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "UNLICENSED"
+authors = ["TrainTrace"]
+
+# Dependency policy (enforced by tests/dependency_policy.rs):
+#
+#   No third-party crate may parse bytes that originate from a vendor-supplied
+#   artifact or from a .ttscan bundle. JSON, YAML, TOML, SafeTensors, GGUF, ONNX,
+#   ZIP and PDF parsing are all implemented in-repo with explicit bounds.
+#
+#   The only external dependencies are:
+#     sha2           - audited SHA-256 (we do not hand-roll cryptographic hashes)
+#     ed25519-dalek  - audited signatures (we do not hand-roll signature schemes)
+#     getrandom      - OS entropy for nonces and key material
+#     clap           - command-line argument parsing (never sees artifact bytes)
+[workspace.dependencies]
+tt-core = { path = "crates/tt-core" }
+tt-facts = { path = "crates/tt-facts" }
+tt-inventory = { path = "crates/tt-inventory" }
+tt-formats = { path = "crates/tt-formats" }
+tt-rules = { path = "crates/tt-rules" }
+tt-markers = { path = "crates/tt-markers" }
+tt-report = { path = "crates/tt-report" }
+tt-bundle = { path = "crates/tt-bundle" }
+tt-case = { path = "crates/tt-case" }
+
+sha2 = { version = "0.10", default-features = false }
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
+getrandom = "0.2"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

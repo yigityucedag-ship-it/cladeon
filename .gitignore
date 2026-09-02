@@ -1,0 +1,10 @@
+/target
+**/target
+Cargo.lock.bak
+*.pdb
+*.ttscan
+/fixtures/generated/
+/out/
+/scratch/
+.DS_Store
+Thumbs.db
