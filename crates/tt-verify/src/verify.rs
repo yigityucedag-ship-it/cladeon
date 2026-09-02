@@ -108,11 +108,25 @@ impl Verification {
         )
     }
 
-    /// A bundle is only fully trustworthy when nothing on any axis is amiss.
+    /// True when the bundle is internally sound: the bytes are unchanged and the
+    /// stated conclusions follow from the report's own observations.
+    ///
+    /// Deliberately says nothing about the challenge. Whether a report answers a
+    /// question the buyer actually asked is a different question from whether it has
+    /// been altered, and folding them together would leave a reader unable to tell
+    /// an unbound pilot scan from an edited verdict.
+    pub fn is_sound(&self) -> bool {
+        self.integrity == IntegrityStatus::Intact && self.recomputation == Recomputation::Matches
+    }
+
+    /// True when the report is additionally bound to a challenge the buyer issued.
+    pub fn is_bound(&self) -> bool {
+        self.challenge == ChallengeStatus::Bound
+    }
+
+    /// Sound and bound: nothing on any axis needs a human.
     pub fn all_clear(&self) -> bool {
-        self.integrity == IntegrityStatus::Intact
-            && self.recomputation == Recomputation::Matches
-            && matches!(self.challenge, ChallengeStatus::Bound | ChallengeStatus::Unsigned)
+        self.is_sound() && self.is_bound()
     }
 }
 
@@ -761,5 +775,58 @@ mod tests {
             .min_by_key(band_strength)
             .unwrap();
         assert_eq!(v.evidence, weakest, "one strong facet must not speak for the rest");
+    }
+}
+
+#[cfg(test)]
+mod exit_semantics {
+    use super::*;
+
+    fn v(integrity: IntegrityStatus, rec: Recomputation, ch: ChallengeStatus) -> Verification {
+        Verification {
+            case_id: None,
+            vendor_label: None,
+            exact_claim_text: None,
+            integrity,
+            challenge: ch,
+            marker: MarkerStatus::NotApplicable,
+            coverage: CoverageStatus::Complete,
+            evidence: SupportBand::WeaklyConsistent,
+            recomputation: rec,
+            findings: Vec::new(),
+            facet_bands: Vec::new(),
+            ruleset_version: None,
+            evidence_digest: None,
+        }
+    }
+
+    #[test]
+    fn an_unbound_but_unaltered_bundle_is_sound() {
+        let x = v(IntegrityStatus::Intact, Recomputation::Matches, ChallengeStatus::Absent);
+        assert!(x.is_sound(), "a pilot scan with no challenge has not been altered");
+        assert!(!x.is_bound());
+        assert!(!x.all_clear());
+    }
+
+    #[test]
+    fn an_edited_verdict_is_not_sound_even_with_perfect_bytes() {
+        let x = v(
+            IntegrityStatus::Intact,
+            Recomputation::Diverges { detail: "parameter_update".into() },
+            ChallengeStatus::Bound,
+        );
+        assert!(!x.is_sound(), "conclusions that do not follow must not read as sound");
+    }
+
+    #[test]
+    fn altered_bytes_are_not_sound() {
+        let x = v(IntegrityStatus::Modified, Recomputation::Matches, ChallengeStatus::Bound);
+        assert!(!x.is_sound());
+    }
+
+    #[test]
+    fn fully_clear_requires_both() {
+        let x = v(IntegrityStatus::Intact, Recomputation::Matches, ChallengeStatus::Bound);
+        assert!(x.is_sound() && x.is_bound() && x.all_clear());
     }
 }

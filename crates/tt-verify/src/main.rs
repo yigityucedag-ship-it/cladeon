@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use tt_core::ids::CaseId;
 use tt_core::time::Timestamp;
-use tt_core::vocab::{ChallengeStatus, IntegrityStatus};
+use tt_core::vocab::IntegrityStatus;
 use verify::Recomputation;
 
 #[derive(Parser)]
@@ -85,11 +85,20 @@ fn main() -> ExitCode {
                 print_text(&v, &bundle);
             }
 
-            // Exit codes are for scripts: 0 clear, 1 something needs a human.
-            if v.all_clear() {
+            // Exit codes are for scripts, and they separate the two questions a
+            // reader must not conflate:
+            //   0  sound, and bound to a challenge the buyer issued
+            //   1  NOT sound: bytes altered, or conclusions that do not follow
+            //   2  the bundle or the arguments could not be read
+            //   3  sound, but not bound to a signed challenge
+            // A pilot scan with no challenge is a legitimate 3, and must never be
+            // mistaken for the 1 that means somebody edited the verdict.
+            if !v.is_sound() {
+                ExitCode::from(1)
+            } else if v.is_bound() {
                 ExitCode::SUCCESS
             } else {
-                ExitCode::from(1)
+                ExitCode::from(3)
             }
         }
     }
@@ -143,7 +152,9 @@ fn print_text(v: &verify::Verification, path: &std::path::Path) {
     {
         println!("\nThe bundle does not verify. Treat report.json, not the PDF, as the");
         println!("authoritative document, and ask the vendor to re-run the scanner.");
-    } else if v.challenge == ChallengeStatus::Unsigned {
-        println!("\nThe bundle verifies against itself. It is not bound to a signed challenge.");
+    } else if !v.all_clear() {
+        println!("\nThe bundle verifies against itself and its conclusions follow from its");
+        println!("own observations. It is not bound to a challenge issued by the buyer, so");
+        println!("nothing here records which question it was answering.");
     }
 }
