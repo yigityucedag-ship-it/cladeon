@@ -74,6 +74,16 @@ pub fn build(
 /// an e-mail body, opened in Notepad, or printed. It leads with what the program
 /// will not do, because that is the vendor's actual first question.
 pub fn instructions(challenge: &cl_case::Challenge, scanner_included: bool) -> String {
+    // The buyer is no longer asked to type the supplier's name, so the opening line
+    // addresses the reader directly when there is none to use.
+    let opening = if challenge.vendor_label.trim().is_empty() {
+        "You have been asked to show how one of your AI systems was built.".to_string()
+    } else {
+        format!(
+            "{} has been asked to show how one of its AI systems was built.",
+            challenge.vendor_label
+        )
+    };
     let run_line = if scanner_included {
         "2. Double-click  cladeon-screen.exe  in this folder."
     } else {
@@ -83,7 +93,7 @@ pub fn instructions(challenge: &cl_case::Challenge, scanner_included: bool) -> S
         "WHAT THIS IS\n\
          ============\n\
          \n\
-         {vendor} has been asked to show how one of its AI systems was built.\n\
+         {opening}\n\
          This folder contains a small program that looks at folders you choose and\n\
          writes a single summary file. You send that file back. Nothing is uploaded.\n\
          \n\
@@ -132,7 +142,7 @@ pub fn instructions(challenge: &cl_case::Challenge, scanner_included: bool) -> S
          \n\
          \n\
          {statement}\n",
-        vendor = challenge.vendor_label,
+        opening = opening,
         claim = challenge.exact_claim_text,
         case = challenge.case_id,
         expires = challenge.expires_at.to_rfc3339(),

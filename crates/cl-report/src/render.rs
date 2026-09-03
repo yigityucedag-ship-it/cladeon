@@ -70,7 +70,10 @@ pub fn render(
     // ---- page 1 ----------------------------------------------------------
     b.heading(1, "Model Provenance Screening Report");
     b.key_value("Case", &str_field(v, "case_id"));
-    b.key_value("Vendor", &str_field(v, "vendor_label"));
+    // A case can be opened without naming the supplier, so print the absence rather
+    // than an empty field that reads as a rendering fault.
+    let supplier = str_field(v, "vendor_label");
+    b.key_value("Supplier", if supplier.trim().is_empty() { "not recorded" } else { &supplier });
     b.key_value("Scanner", &format!("{} {}", cl_core::SCANNER_NAME, cl_core::PRODUCT_VERSION));
     b.key_value(
         "Ruleset",

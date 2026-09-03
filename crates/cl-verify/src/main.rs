@@ -110,8 +110,11 @@ fn print_text(v: &verify::Verification, path: &std::path::Path) {
     if let Some(c) = &v.case_id {
         println!("case:   {c}");
     }
-    if let Some(l) = &v.vendor_label {
-        println!("vendor: {l}");
+    // A case may be opened without naming the supplier; say so rather than printing
+    // a blank field that reads as a bug.
+    match v.vendor_label.as_deref() {
+        Some(l) if !l.trim().is_empty() => println!("supplier: {l}"),
+        _ => println!("supplier: not recorded"),
     }
     if let Some(c) = &v.exact_claim_text {
         println!("claim:  {c}");

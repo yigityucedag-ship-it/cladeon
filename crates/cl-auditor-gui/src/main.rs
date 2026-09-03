@@ -39,11 +39,8 @@ enum Page {
 struct App {
     page: Page,
     // new case
-    vendor: String,
-    claim: String,
     claimed_origin: Option<WeightOrigin>,
     valid_days: i64,
-    sign_it: bool,
     // issued
     kit_dir: Option<PathBuf>,
     kit_case: Option<String>,
@@ -59,14 +56,11 @@ impl Default for App {
     fn default() -> Self {
         App {
             page: Page::Home,
-            vendor: String::new(),
-            claim: String::new(),
             // The claim this product exists to test. Pre-selected because it is why a
             // buyer opens a case at all, and because leaving it unset silently
             // disables the rule family that tests it.
             claimed_origin: Some(WeightOrigin::RandomInitializationClaimed),
             valid_days: 21,
-            sign_it: true,
             kit_dir: None,
             kit_case: None,
             kit_scanner_included: false,
@@ -84,6 +78,29 @@ impl Default for App {
 /// it from a shared drive. It is the buyer's private half: it never enters a kit,
 /// and losing it only means future cases cannot be signed — past bundles stay
 /// checkable, because the public half travels inside each challenge.
+/// The sentence quoted into the report, derived from the single question the buyer
+/// answers when opening a case.
+///
+/// This used to be free text the buyer pasted from a pitch. Verbatim quotation reads
+/// better in a report, but it cost two typed fields on the one screen that has to be
+/// usable by someone who does not want to be doing this, and a claim can be softened
+/// or sharpened in the retyping. A fixed sentence per option cannot be, and it is the
+/// same sentence the supplier sees, so neither side is reading a private version.
+fn claim_text(origin: Option<WeightOrigin>) -> &'static str {
+    match origin {
+        Some(WeightOrigin::RandomInitializationClaimed) => "We trained our own model.",
+        Some(WeightOrigin::DerivativeOfDisclosedBase) => {
+            "We built our system on an existing model from someone else."
+        }
+        Some(WeightOrigin::DistilledFromTeacher) => {
+            "We copied the behaviour of a larger model into our own."
+        }
+        Some(WeightOrigin::Unknown) | None => {
+            "No claim about how this model was built has been recorded."
+        }
+    }
+}
+
 fn key_path() -> Option<PathBuf> {
     Some(std::env::current_exe().ok()?.parent()?.join("cladeon-issuer.key"))
 }
@@ -130,23 +147,24 @@ impl App {
         let case_id = CaseId::from_entropy(year, &seed);
         let nonce = Nonce::from_bytes(&nonce_bytes);
 
-        let key = if self.sign_it {
-            match load_or_create_key() {
-                Ok(k) => Some(k),
-                Err(e) => {
-                    self.error = Some(format!("the signing key could not be prepared: {e}"));
-                    return;
-                }
+        // Always signed. It was a checkbox marked "recommended", which is a decision
+        // dressed up as a choice: an unsigned request cannot be tied to the reply it
+        // produces, and nobody opening this screen wants that.
+        let key = match load_or_create_key() {
+            Ok(k) => Some(k),
+            Err(e) => {
+                self.error = Some(format!("the signing key could not be prepared: {e}"));
+                return;
             }
-        } else {
-            None
         };
 
         let challenge = cl_case::Challenge::new(
             case_id.clone(),
             nonce,
-            self.vendor.trim(),
-            self.claim.trim(),
+            // Not asked for. An empty label is displayed as "not recorded" rather
+            // than printed as a blank field.
+            "",
+            claim_text(self.claimed_origin),
             now,
             self.valid_days,
             vec![
@@ -303,30 +321,9 @@ impl App {
         cl_ui::h1(ui, "Start a new check");
         ui.add_space(10.0);
 
-        cl_ui::h2(ui, "Who are you asking?");
-        ui.text_edit_singleline(&mut self.vendor);
-        cl_ui::muted(ui, "The supplier's name, as you would write it in a report.");
-
-        ui.add_space(12.0);
-        cl_ui::h2(ui, "What exactly did they tell you?");
-        cl_ui::muted(
-            ui,
-            "Paste their own words from the pitch, tender or datasheet - not a summary. \
-             This sentence is quoted into the report, and they are never asked to restate \
-             it.",
-        );
-        ui.add_space(4.0);
-        ui.add(
-            egui::TextEdit::multiline(&mut self.claim)
-                .desired_width(f32::INFINITY)
-                .desired_rows(3)
-                .hint_text("e.g. \"We trained our own large language model from scratch.\""),
-        );
-
-        ui.add_space(14.0);
-        cl_ui::h2(ui, "In short, what are they saying they built?");
-        cl_ui::muted(ui, "This decides which checks are worth running.");
-        ui.add_space(4.0);
+        cl_ui::h2(ui, "What are they saying they built?");
+        cl_ui::muted(ui, "Pick whichever is closest to what you were told.");
+        ui.add_space(8.0);
         for (opt, label) in [
             (Some(WeightOrigin::RandomInitializationClaimed), "They trained their own model"),
             (Some(WeightOrigin::DerivativeOfDisclosedBase), "They built on someone else's model"),
@@ -336,31 +333,29 @@ impl App {
             ui.radio_value(&mut self.claimed_origin, opt, label);
         }
 
+        ui.add_space(12.0);
+        cl_ui::callout(
+            ui,
+            cl_ui::colour::NEUTRAL,
+            "The statement that gets tested",
+            claim_text(self.claimed_origin),
+        );
+
         ui.add_space(14.0);
         ui.horizontal(|ui| {
             ui.label("Ask them to reply within");
             ui.add(egui::DragValue::new(&mut self.valid_days).range(1..=90).suffix(" days"));
         });
-        ui.checkbox(&mut self.sign_it, "Sign this request (recommended)");
-        cl_ui::muted(
-            ui,
-            "Signing lets you prove later that the returned file answers this request and \
-             not a different one. The private key stays on this computer and is never sent.",
-        );
 
         ui.add_space(20.0);
-        let ready = !self.vendor.trim().is_empty() && self.claim.trim().len() > 8;
         ui.horizontal(|ui| {
             if cl_ui::secondary_button(ui, "Back") {
                 self.page = Page::Home;
             }
-            if cl_ui::primary_button(ui, "Create the folder to send", ready) {
+            if cl_ui::primary_button(ui, "Create the folder to send", true) {
                 self.create_case();
             }
         });
-        if !ready {
-            cl_ui::muted(ui, "Fill in the vendor and the claim to continue.");
-        }
     }
 
     fn kit_ready(&mut self, ui: &mut egui::Ui) {
@@ -401,8 +396,6 @@ impl App {
         ui.add_space(18.0);
         ui.horizontal(|ui| {
             if cl_ui::secondary_button(ui, "Start another check") {
-                self.vendor.clear();
-                self.claim.clear();
                 self.page = Page::NewCase;
             }
             if cl_ui::secondary_button(ui, "Open a returned file") {
@@ -416,8 +409,9 @@ impl App {
 
         cl_ui::h1(ui, "What the vendor sent back");
         ui.add_space(8.0);
-        if let Some(l) = &v.vendor_label {
-            cl_ui::field(ui, "Vendor", l);
+        match v.vendor_label.as_deref() {
+            Some(l) if !l.trim().is_empty() => cl_ui::field(ui, "Supplier", l),
+            _ => cl_ui::field(ui, "Supplier", "not recorded"),
         }
         if let Some(c) = &v.case_id {
             cl_ui::field(ui, "Case", c);
@@ -627,17 +621,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_case_needs_a_vendor_and_a_real_claim() {
-        let mut app = App::default();
-        let ready = |a: &App| !a.vendor.trim().is_empty() && a.claim.trim().len() > 8;
-        assert!(!ready(&app));
-        app.vendor = "Acme".into();
-        assert!(!ready(&app), "a vendor alone is not a case");
-        app.claim = "short".into();
-        assert!(!ready(&app), "a claim must be a sentence, not a word");
-        app.claim = "We trained our own model from scratch.".into();
-        assert!(ready(&app));
+    fn every_option_yields_its_own_sentence_and_the_silent_one_asserts_nothing() {
+        // The buyer types nothing, so these four sentences are the entire vocabulary
+        // of claims the product can test. They must be distinct, they must read as
+        // sentences in a report, and the one that means "they did not say" must not
+        // quietly assert a training claim on the supplier's behalf.
+        let opts = [
+            Some(WeightOrigin::RandomInitializationClaimed),
+            Some(WeightOrigin::DerivativeOfDisclosedBase),
+            Some(WeightOrigin::DistilledFromTeacher),
+            None,
+        ];
+        let mut seen: Vec<&str> = Vec::new();
+        for o in opts {
+            let t = claim_text(o);
+            assert!(t.ends_with('.'), "`{t}` is not a sentence");
+            assert!(t.len() > 20, "`{t}` is too thin to quote in a report");
+            assert!(!seen.contains(&t), "`{t}` is used for two different answers");
+            seen.push(t);
+        }
+        let silent = claim_text(None);
+        assert!(silent.contains("No claim"), "{silent}");
+        assert_eq!(claim_text(Some(WeightOrigin::Unknown)), silent);
     }
+
+    #[test]
+    fn the_buyer_is_asked_one_question_and_types_nothing() {
+        // The screen carried two text fields and a checkbox. If any of them come
+        // back, the case-opening screen has stopped being a single choice.
+        let src = include_str!("main.rs");
+        let body = &src[..src.find("mod tests").unwrap_or(src.len())];
+        let screen = &body[body.find("fn new_case").unwrap()..body.find("fn kit_ready").unwrap()];
+        for probe in ["text_edit_singleline", "text_edit_multiline", "TextEdit", "checkbox"] {
+            assert!(!screen.contains(probe), "`{probe}` is back on the case-opening screen");
+        }
+        assert_eq!(screen.matches("radio_value").count(), 1, "one question, one control");
+    }
+
 
     #[test]
     fn the_signing_key_is_never_part_of_the_kit() {

@@ -519,36 +519,42 @@ impl App {
         }
 
         ui.add_space(16.0);
-        cl_ui::h2(ui, "Leave something out (optional)");
-        cl_ui::muted(
-            ui,
-            "Anything you exclude is recorded in the report as excluded by you. It is not \
-             hidden, but its contents are never read.",
-        );
-        if cl_ui::secondary_button(ui, "Exclude a folder…") {
-            if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                if !self.excluded.contains(&d) {
-                    self.excluded.push(d);
-                    self.preflight = None;
-                }
-            }
-        }
-        let mut rm: Option<usize> = None;
-        for (i, r) in self.excluded.iter().enumerate() {
-            ui.horizontal(|ui| {
-                if ui.small_button("Remove").clicked() {
-                    rm = Some(i);
-                }
-                ui.label(
-                    egui::RichText::new(r.display().to_string())
-                        .size(13.0)
-                        .color(cl_ui::colour::MUTED),
+        // Folded away by default. Excluding a folder is a real capability and the
+        // report records that it happened, but presenting it as a second open
+        // question implies the supplier is expected to have something to leave out.
+        egui::CollapsingHeader::new("Leave a folder out (most people do not need this)")
+            .default_open(!self.excluded.is_empty())
+            .show(ui, |ui| {
+                cl_ui::muted(
+                    ui,
+                    "Anything you exclude is recorded as excluded by you. It is not hidden, \
+                     but its contents are never read.",
                 );
+                if cl_ui::secondary_button(ui, "Exclude a folder...") {
+                    if let Some(d) = rfd::FileDialog::new().pick_folder() {
+                        if !self.excluded.contains(&d) {
+                            self.excluded.push(d);
+                            self.preflight = None;
+                        }
+                    }
+                }
+                let mut rm: Option<usize> = None;
+                for (i, r) in self.excluded.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        if ui.small_button("Remove").clicked() {
+                            rm = Some(i);
+                        }
+                        ui.label(
+                            egui::RichText::new(r.display().to_string())
+                                .size(13.0)
+                                .color(cl_ui::colour::MUTED),
+                        );
+                    });
+                }
+                if let Some(i) = rm {
+                    self.excluded.remove(i);
+                }
             });
-        }
-        if let Some(i) = rm {
-            self.excluded.remove(i);
-        }
 
         ui.add_space(18.0);
         ui.horizontal(|ui| {
