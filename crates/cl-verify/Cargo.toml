@@ -1,0 +1,21 @@
+[package]
+name = "cl-verify"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "cladeon-verify"
+path = "src/main.rs"
+
+[dependencies]
+cl-core.workspace = true
+cl-facts.workspace = true
+cl-rules.workspace = true
+cl-report.workspace = true
+cl-markers.workspace = true
+cl-bundle.workspace = true
+cl-case.workspace = true
+clap.workspace = true

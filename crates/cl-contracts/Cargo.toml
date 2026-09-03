@@ -1,0 +1,16 @@
+[package]
+name = "cl-contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+# This crate exists only to host workspace-wide contract tests. It ships no code.
+[dependencies]
+
+[dev-dependencies]
+cl-core.workspace = true
+cl-facts.workspace = true
+cl-rules.workspace = true
+cl-fixtures.workspace = true

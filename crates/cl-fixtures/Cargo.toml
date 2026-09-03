@@ -1,0 +1,19 @@
+[package]
+name = "cl-fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[lib]
+name = "cl_fixtures"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cladeon-fixtures"
+path = "src/main.rs"
+
+[dependencies]
+cl-core.workspace = true
+clap.workspace = true

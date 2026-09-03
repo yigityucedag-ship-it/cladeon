@@ -1,4 +1,4 @@
-# TrainTrace — Acceptance Tests
+# Cladeon — Acceptance Tests
 
 `acceptance_version = 1`
 
@@ -23,13 +23,13 @@ honest vendor. These are the tests that protect against it.
 
 | Promise | Test | Where |
 |---|---|---|
-| No case that should be quiet raises a contradiction | `no_case_that_should_be_quiet_raises_a_contradiction` | `tt-screen/corpus` |
-| An ordinary ordered training log produces no contradiction | `an_ordinary_training_log_produces_no_contradiction` | `tt-contracts` |
-| An absent ordering flag is not read as disorder | `an_absent_ordering_flag_is_not_read_as_disorder` | `tt-contracts` |
-| Missing anchors never reduce a score | `missing_anchors_never_reduce_a_score` | `tt-contracts`, `tt-rules` |
-| Every contradiction cites an artifact digest and a fact | `every_contradiction_cites_an_artifact_digest` | `tt-contracts` |
-| A copied directory timestamp is an ambiguity, not a contradiction | `copied_timestamps` corpus case | `tt-screen/corpus` |
-| A tidy loss curve is not evidence of fabrication | `fabricated_neat_logs` corpus case | `tt-screen/corpus` |
+| No case that should be quiet raises a contradiction | `no_case_that_should_be_quiet_raises_a_contradiction` | `cl-screen/corpus` |
+| An ordinary ordered training log produces no contradiction | `an_ordinary_training_log_produces_no_contradiction` | `cl-contracts` |
+| An absent ordering flag is not read as disorder | `an_absent_ordering_flag_is_not_read_as_disorder` | `cl-contracts` |
+| Missing anchors never reduce a score | `missing_anchors_never_reduce_a_score` | `cl-contracts`, `cl-rules` |
+| Every contradiction cites an artifact digest and a fact | `every_contradiction_cites_an_artifact_digest` | `cl-contracts` |
+| A copied directory timestamp is an ambiguity, not a contradiction | `copied_timestamps` corpus case | `cl-screen/corpus` |
+| A tidy loss curve is not evidence of fabrication | `fabricated_neat_logs` corpus case | `cl-screen/corpus` |
 
 **But abstention is not silence.** A genuine conflict is still reported:
 
@@ -43,7 +43,7 @@ honest vendor. These are the tests that protect against it.
 
 | Promise | Test |
 |---|---|
-| Stage 1 cannot name a merged adapter, whatever the evidence | `stage_one_cannot_name_a_merged_adapter` (`tt-contracts`), `merged_adapter_is_unreachable_in_stage_one_even_with_perfect_evidence` (`tt-rules`) |
+| Stage 1 cannot name a merged adapter, whatever the evidence | `stage_one_cannot_name_a_merged_adapter` (`cl-contracts`), `merged_adapter_is_unreachable_in_stage_one_even_with_perfect_evidence` (`cl-rules`) |
 | Every case whose ground truth requires abstention abstains | `cases_that_must_abstain_do_abstain` |
 | Required abstentions are recorded by id | `required_abstentions_are_recorded` |
 | Configuration text alone cannot name a method | `a_tree_of_only_text_cannot_reach_a_method_label` |
@@ -95,9 +95,9 @@ honest vendor. These are the tests that protect against it.
 | Truncation at every boundary never panics | `truncation_at_every_boundary_never_panics`, `truncation_at_every_scale_never_panics` |
 | Declared lengths beyond the buffer are refused before allocating | `a_length_field_larger_than_the_buffer_is_refused_before_allocating` |
 | Depth, width and string limits bind | `depth_limit_stops_recursion`, `width_limits`, `bounds_are_enforced` |
-| Zip-slip, duplicates, deflate, CRC and header disagreement are all refused | `tt-bundle/zip` rejection suite |
+| Zip-slip, duplicates, deflate, CRC and header disagreement are all refused | `cl-bundle/zip` rejection suite |
 | Malformed input yields a coverage note, never silence | `hostile_files_produce_coverage_notes_rather_than_silence` |
-| Reparse points are not traversed | `tt-inventory` traversal suite |
+| Reparse points are not traversed | `cl-inventory` traversal suite |
 
 ---
 
@@ -124,7 +124,7 @@ honest vendor. These are the tests that protect against it.
 | The evidence digest ignores the clock | `evidence_digest_ignores_the_clock` |
 | ...but moves when a conclusion moves | `evidence_digest_moves_when_a_conclusion_moves` |
 | Canonical JSON is construction-order independent | `digest_is_stable_across_construction_order` |
-| The bundle is byte-reproducible | `tt-bundle` determinism suite |
+| The bundle is byte-reproducible | `cl-bundle` determinism suite |
 | The PDF is byte-identical across builds | `two_builds_are_byte_identical` |
 | Judging is order-independent | `judging_is_order_independent` |
 | Fixtures generate identically twice | `generating_twice_produces_identical_bytes` |
@@ -159,10 +159,10 @@ honest vendor. These are the tests that protect against it.
 | Required anchors, caps and abstention work on the fixture matrix | **Met** — 15 cases |
 | Missing evidence never becomes an accusation | **Met**, enforced by test |
 | Outbound preview and redaction ledger complete | **Met** — `preflight` plus the published ledger |
-| `.ttscan` verifies deterministically | **Met** |
+| `.clade` verifies deterministically | **Met** |
 | Markers survive ordinary transport | **Partially** — round-trip through the PDF is tested; survival through real e-mail systems is not |
 | All deliberate report edits fail integrity checks | **Met**, including the recompute-every-hash case |
-| Report labels vendor-host and production-binding limitations | **Met** — `TT-BIND-005` is unconditional |
+| Report labels vendor-host and production-binding limitations | **Met** — `CL-BIND-005` is unconditional |
 | Code-signed releases and published hashes | **Not started** |
 | Blind pilot metrics recorded | **Not started** — no detection rate is claimed anywhere |
 

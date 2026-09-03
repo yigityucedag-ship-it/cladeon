@@ -1,10 +1,10 @@
-# TrainTrace — Bundle and Document Schemas (Phase 0)
+# Cladeon — Bundle and Document Schemas (Phase 0)
 
 `schema_version = 1`
 
 ## 0. Canonicalisation rules (normative)
 
-All authoritative documents are serialised through `tt_core::canon`.
+All authoritative documents are serialised through `cl_core::canon`.
 
 1. The canonical value model has exactly six kinds: `null`, `bool`, **integer**,
    `string`, `array`, `object`. **There is no float.** Attempting to place a float in
@@ -37,7 +37,7 @@ Issued by the buyer, signed with Ed25519. The scanner holds only the public key.
 ```
 {
   "schema_version": 1,
-  "case_id": "TT-2026-0F3A9C",
+  "case_id": "CL-2026-0F3A9C",
   "nonce": "<32 lowercase hex chars>",
   "vendor_label": "Acme Analytics Ltd",
   "exact_claim_text": "We trained our own large language model from scratch.",
@@ -72,11 +72,11 @@ The authoritative document. The PDF is a rendering of it.
   "vocabulary_version": 1,
   "ruleset_version": 1,
   "rubric_version": 1,
-  "scanner_name": "TrainTrace Screen",
+  "scanner_name": "Cladeon Screen",
   "scanner_version": "0.1.0",
   "scanner_build_sha256": "<64 hex, self-hash of the running executable>",
 
-  "case_id": "TT-2026-0F3A9C",
+  "case_id": "CL-2026-0F3A9C",
   "challenge_sha256": "<64 hex>",
   "vendor_label": "Acme Analytics Ltd",
   "exact_claim_text": "...",
@@ -111,8 +111,8 @@ The authoritative document. The PDF is a rendering of it.
   },
 
   "redaction_ledger": [
-    {"rule": "TT-PRIV-002", "kind": "windows_username", "count": 31},
-    {"rule": "TT-PRIV-005", "kind": "submitter_display_redaction",
+    {"rule": "CL-PRIV-002", "kind": "windows_username", "count": 31},
+    {"rule": "CL-PRIV-005", "kind": "submitter_display_redaction",
      "count": 2, "fact_ids": ["F-0031", "F-0044"]}
   ],
 
@@ -128,7 +128,7 @@ The authoritative document. The PDF is a rendering of it.
 
   "rule_outcomes": [
     {
-      "rule_id": "TT-LORA-003",
+      "rule_id": "CL-LORA-003",
       "ruleset_version": 1,
       "kind": "supporting_evidence",
       "facet": "parameter_update",
@@ -152,7 +152,7 @@ The authoritative document. The PDF is a rendering of it.
       "rubric_divisor": 100,
       "anchor_scores": [{"anchor": "structure", "weight": 30, "achievement": 100}],
       "caps_applied": [{"cap_id": "CAP-NO-BASE", "max_tenths": 550,
-                        "triggered_by": ["TT-BASE-003"]}],
+                        "triggered_by": ["CL-BASE-003"]}],
       "abstentions": [],
       "best_evidence_tier": "E2",
       "method_label_emitted": true,
@@ -160,9 +160,9 @@ The authoritative document. The PDF is a rendering of it.
     }
   ],
 
-  "contradictions": ["TT-XFACET-002"],
-  "limitations": ["TT-BIND-005", "TT-API-008"],
-  "next_evidence_requests": ["TT-MERGE-006"],
+  "contradictions": ["CL-XFACET-002"],
+  "limitations": ["CL-BIND-005", "CL-API-008"],
+  "next_evidence_requests": ["CL-MERGE-006"],
 
   "required_statement": "This Stage-1 report evaluates consistency within ...",
 
@@ -268,7 +268,7 @@ is authoritative.
 
 ---
 
-## 7. `.ttscan` container
+## 7. `.clade` container
 
 - ZIP-compatible, custom extension, `bundle_format = 1`.
 - Entry order is fixed and deterministic:
@@ -292,7 +292,7 @@ is authoritative.
 | Duplicate names | rejected |
 | Unknown names | rejected |
 
-File name: `TT-<case-id>-<first 12 hex of root_digest>.ttscan`
+File name: `CL-<case-id>-<first 12 hex of root_digest>.clade`
 
 ---
 

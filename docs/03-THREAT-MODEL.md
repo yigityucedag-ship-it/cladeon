@@ -1,11 +1,11 @@
-# TrainTrace — Threat Model
+# Cladeon — Threat Model
 
 `threat_model_version = 1`
 
 ## The situation
 
-A buyer asks a vendor how their AI system was built. The vendor runs TrainTrace on
-their own machine, on folders they choose, and emails back a `.ttscan`.
+A buyer asks a vendor how their AI system was built. The vendor runs Cladeon on
+their own machine, on folders they choose, and emails back a `.clade`.
 
 Every part of that sentence is a problem, and the design is mostly a response to it:
 
@@ -48,7 +48,7 @@ method label.
 
 Points the scanner at a folder that flatters them, or excludes what does not.
 
-*Mitigations:* **not solvable at Stage 1, and the report says so.** `TT-BIND-005` is
+*Mitigations:* **not solvable at Stage 1, and the report says so.** `CL-BIND-005` is
 printed unconditionally: the scanned folder is not established to be the production
 deployment. Exclusions are recorded in the manifest with
 `skipped_by_submitter`; the vendor may withhold a source, but not the fact that they
@@ -87,7 +87,7 @@ depend on the secrecy of anything shipped in the binary.
 
 ### A6 — The hostile file
 
-A crafted artifact aimed at the scanner itself, or a crafted `.ttscan` aimed at the
+A crafted artifact aimed at the scanner itself, or a crafted `.clade` aimed at the
 verifier. This adversary does not care about the report; they want code execution or a
 crash on the *buyer's* machine.
 
@@ -113,7 +113,7 @@ build if a fifth appears.
 | Nesting | Depth-capped in every parser; recursion bounded before descent |
 | Traversal loops | Reparse points are never followed, so loops are unrepresentable |
 | Long paths, access denied, files changing mid-scan | Recorded as coverage, never fatal |
-| Decompression bombs in `.ttscan` | **Structurally impossible**: only STORED entries are accepted |
+| Decompression bombs in `.clade` | **Structurally impossible**: only STORED entries are accepted |
 | Zip-slip, duplicate names, drive letters | Entry names come from a closed set of eight |
 | Central-directory / local-header disagreement | Rejected — that mismatch is how one tool is made to see a different file from another |
 | Integer overflow | `checked_`/`saturating_` throughout; one real overflow was found and fixed by its own test |
@@ -161,7 +161,7 @@ that none of them — nor the account name — appears in `report.json` or the m
 
 ## The honest summary
 
-TrainTrace raises the cost of overstating a training claim from "say a sentence" to
+Cladeon raises the cost of overstating a training claim from "say a sentence" to
 "fabricate a coherent artifact set, and either avoid the verifier's recomputation or
 reverse-engineer the scanner". That is a real increase and a useful one.
 

@@ -1,4 +1,4 @@
-# TrainTrace — Frozen Vocabulary (Phase 0)
+# Cladeon — Frozen Vocabulary (Phase 0)
 
 `vocabulary_version = 1`
 
@@ -190,8 +190,8 @@ caution's clothes.
 So the condition is narrowed to the case where it carries information: a serving
 or deployment configuration **is** present and names an artifact *outside* the
 scanned scope. That is a positive reason to doubt we were shown the right files.
-Simply having no deployment information is a **missing anchor** (`TT-BIND-004`),
-which lowers the score, plus the unconditional limitation `TT-BIND-005` — printed
+Simply having no deployment information is a **missing anchor** (`CL-BIND-004`),
+which lowers the score, plus the unconditional limitation `CL-BIND-005` — printed
 on every report — that the scanned folder is not established to be the production
 deployment.
 

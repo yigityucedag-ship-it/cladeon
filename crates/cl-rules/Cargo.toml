@@ -1,0 +1,11 @@
+[package]
+name = "cl-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[dependencies]
+cl-core.workspace = true
+cl-facts.workspace = true

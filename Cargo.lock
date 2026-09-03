@@ -74,6 +74,127 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cl-bundle"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+]
+
+[[package]]
+name = "cl-case"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "ed25519-dalek",
+ "getrandom",
+]
+
+[[package]]
+name = "cl-contracts"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "cl-facts",
+ "cl-fixtures",
+ "cl-rules",
+]
+
+[[package]]
+name = "cl-core"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "sha2",
+]
+
+[[package]]
+name = "cl-facts"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+]
+
+[[package]]
+name = "cl-fixtures"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "clap",
+]
+
+[[package]]
+name = "cl-formats"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "cl-facts",
+]
+
+[[package]]
+name = "cl-inventory"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "cl-facts",
+]
+
+[[package]]
+name = "cl-markers"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+]
+
+[[package]]
+name = "cl-report"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "cl-facts",
+ "cl-markers",
+ "cl-rules",
+]
+
+[[package]]
+name = "cl-rules"
+version = "0.1.0"
+dependencies = [
+ "cl-core",
+ "cl-facts",
+]
+
+[[package]]
+name = "cl-screen"
+version = "0.1.0"
+dependencies = [
+ "cl-bundle",
+ "cl-case",
+ "cl-core",
+ "cl-facts",
+ "cl-fixtures",
+ "cl-formats",
+ "cl-inventory",
+ "cl-markers",
+ "cl-report",
+ "cl-rules",
+ "clap",
+]
+
+[[package]]
+name = "cl-verify"
+version = "0.1.0"
+dependencies = [
+ "cl-bundle",
+ "cl-case",
+ "cl-core",
+ "cl-facts",
+ "cl-markers",
+ "cl-report",
+ "cl-rules",
+ "clap",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -410,127 +531,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tt-bundle"
-version = "0.1.0"
-dependencies = [
- "tt-core",
-]
-
-[[package]]
-name = "tt-case"
-version = "0.1.0"
-dependencies = [
- "ed25519-dalek",
- "getrandom",
- "tt-core",
-]
-
-[[package]]
-name = "tt-contracts"
-version = "0.1.0"
-dependencies = [
- "tt-core",
- "tt-facts",
- "tt-fixtures",
- "tt-rules",
-]
-
-[[package]]
-name = "tt-core"
-version = "0.1.0"
-dependencies = [
- "getrandom",
- "sha2",
-]
-
-[[package]]
-name = "tt-facts"
-version = "0.1.0"
-dependencies = [
- "tt-core",
-]
-
-[[package]]
-name = "tt-fixtures"
-version = "0.1.0"
-dependencies = [
- "clap",
- "tt-core",
-]
-
-[[package]]
-name = "tt-formats"
-version = "0.1.0"
-dependencies = [
- "tt-core",
- "tt-facts",
-]
-
-[[package]]
-name = "tt-inventory"
-version = "0.1.0"
-dependencies = [
- "tt-core",
- "tt-facts",
-]
-
-[[package]]
-name = "tt-markers"
-version = "0.1.0"
-dependencies = [
- "tt-core",
-]
-
-[[package]]
-name = "tt-report"
-version = "0.1.0"
-dependencies = [
- "tt-core",
- "tt-facts",
- "tt-markers",
- "tt-rules",
-]
-
-[[package]]
-name = "tt-rules"
-version = "0.1.0"
-dependencies = [
- "tt-core",
- "tt-facts",
-]
-
-[[package]]
-name = "tt-screen"
-version = "0.1.0"
-dependencies = [
- "clap",
- "tt-bundle",
- "tt-case",
- "tt-core",
- "tt-facts",
- "tt-fixtures",
- "tt-formats",
- "tt-inventory",
- "tt-markers",
- "tt-report",
- "tt-rules",
-]
-
-[[package]]
-name = "tt-verify"
-version = "0.1.0"
-dependencies = [
- "clap",
- "tt-bundle",
- "tt-case",
- "tt-core",
- "tt-facts",
- "tt-markers",
- "tt-report",
- "tt-rules",
 ]
 
 [[package]]
