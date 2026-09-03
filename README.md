@@ -176,7 +176,7 @@ actually exists.
 ## Licence
 
 **[Functional Source License 1.1](LICENSE.md), Apache 2.0 future licence.**
-Copyright 2026 Yigit Yucedag.
+Copyright 2026 Yiğit Murat Yücedağ.
 
 In plain terms:
 

@@ -22,7 +22,7 @@ description = "Checks whether an AI vendor's artifacts are consistent with how t
 edition = "2021"
 rust-version = "1.85"
 license-file = "LICENSE.md"
-authors = ["Yigit Yucedag"]
+authors = ["Yiğit Murat Yücedağ"]
 
 # Dependency policy (enforced by tests/dependency_policy.rs):
 #
