@@ -24,10 +24,7 @@
 use cl_core::ids::CaseId;
 use cl_core::limits::Limits;
 use cl_core::redact::Redactor;
-use cl_core::vocab::{
-    CoverageStatus, Facet, InferenceAugmentation, ParameterUpdate, SupportBand, TrainingStage,
-    WeightOrigin,
-};
+use cl_core::vocab::{CoverageStatus, Facet, SupportBand};
 use cl_facts::DeclaredFacets;
 use cl_screen::{scan, seal};
 use eframe::egui;
@@ -38,16 +35,15 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 
 const STEPS: &[&str] =
-    &["What this is", "The claim", "Your folders", "Before we start", "Scanning", "Send it back"];
+    &["What this is", "Your folders", "Before we start", "Scanning", "Send it back"];
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Step {
     Welcome = 0,
-    Claim = 1,
-    Folders = 2,
-    Preflight = 3,
-    Running = 4,
-    Done = 5,
+    Folders = 1,
+    Preflight = 2,
+    Running = 3,
+    Done = 4,
 }
 
 /// A preflight summary: what is in scope, without having hashed anything.
@@ -92,10 +88,6 @@ struct App {
     vendor: String,
     claim: String,
     // declaration
-    origin: Option<WeightOrigin>,
-    update: Option<ParameterUpdate>,
-    stage: Option<TrainingStage>,
-    augmentation: Vec<InferenceAugmentation>,
     // selection
     roots: Vec<PathBuf>,
     excluded: Vec<PathBuf>,
@@ -119,10 +111,6 @@ impl Default for App {
             case_id: String::new(),
             vendor: String::new(),
             claim: String::new(),
-            origin: None,
-            update: None,
-            stage: None,
-            augmentation: Vec::new(),
             roots: Vec::new(),
             excluded: Vec::new(),
             rx: None,
@@ -193,11 +181,12 @@ impl App {
             case_id,
             vendor_label: self.vendor.clone(),
             exact_claim_text: self.claim.clone(),
+            // Everything here comes from the buyer's request. The supplier is asked
+            // nothing about their own system, so there is no second account of it to
+            // reconcile: the report compares one fixed claim against the files.
             declared: DeclaredFacets {
-                weight_origin: self.origin,
-                parameter_update: self.update,
-                training_stage: self.stage,
-                inference_augmentation: self.augmentation.clone(),
+                weight_origin: self.challenge.as_ref().and_then(|c| c.claimed_origin),
+                ..DeclaredFacets::default()
             },
             hash_files: true,
             limits: Limits::default(),
@@ -383,7 +372,6 @@ impl eframe::App for App {
                 }
                 match self.step {
                     Step::Welcome => self.welcome(ui),
-                    Step::Claim => self.claim_screen(ui),
                     Step::Folders => self.folders(ui),
                     Step::Preflight => self.preflight_screen(ui, ctx),
                     Step::Running => self.running(ui),
@@ -398,154 +386,97 @@ impl eframe::App for App {
 
 impl App {
     fn welcome(&mut self, ui: &mut egui::Ui) {
-        cl_ui::h1(ui, "Someone has asked how your AI system was built");
+        let Some(c) = self.challenge.clone() else {
+            return self.no_request(ui);
+        };
+
+        cl_ui::h1(ui, "Show how your AI system was built");
         ui.add_space(8.0);
         cl_ui::body(
             ui,
-            "This program looks at folders you choose and writes a single file describing \
-             what it found. You send that file back. It takes a few minutes.",
+            "This program looks at folders you choose and writes one file describing what \
+             it found. You send that file back. It takes a few minutes.",
         );
-        ui.add_space(14.0);
-
-        cl_ui::h2(ui, "What it does");
-        cl_ui::body(ui, "•  Reads only the folders you pick, and only to look at them.");
-        cl_ui::body(ui, "•  Records file names, sizes and checksums, plus settings from configuration files.");
-        cl_ui::body(ui, "•  Shows you everything that would leave this machine, before it leaves.");
-
-        ui.add_space(10.0);
-        cl_ui::h2(ui, "What it never does");
-        cl_ui::body(ui, "•  It does not open a network connection. Nothing is uploaded.");
-        cl_ui::body(ui, "•  It does not run, open or load your model files.");
-        cl_ui::body(ui, "•  It does not copy your weights, your data, your code or your prompts.");
-        cl_ui::body(ui, "•  It removes passwords, API keys and your Windows user name automatically.");
 
         ui.add_space(16.0);
-        match &self.challenge {
-            Some(c) => cl_ui::callout(
-                ui,
-                cl_ui::colour::ACCENT,
-                "A request was found next to this program",
-                &format!(
-                    "Case {} from the organisation that sent this to you. The exact question \
-                     they asked is on the next screen.",
-                    c.case_id
-                ),
-            ),
-            None => cl_ui::callout(
-                ui,
-                cl_ui::colour::ATTENTION,
-                "No request file found",
-                "This program was sent without its case file. You can still run a scan, but \
-                 the result will not be tied to anyone's request. Ask whoever sent this for \
-                 the whole folder they meant to send.",
-            ),
-        }
+        cl_ui::field(ui, "Asked by", &c.vendor_label);
+        cl_ui::field(ui, "Reference", c.case_id.as_str());
+        ui.add_space(10.0);
+        cl_ui::h2(ui, "The statement being checked");
+        egui::Frame::NONE
+            .fill(egui::Color32::from_rgb(0xf2, 0xf3, 0xf5))
+            .inner_margin(egui::Margin::same(12))
+            .corner_radius(4.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new(&c.exact_claim_text).size(15.0).italics());
+            });
+        cl_ui::muted(ui, "Taken from the request. You are not asked to restate it.");
+
+        ui.add_space(16.0);
+        cl_ui::h2(ui, "What it never does");
+        cl_ui::body(ui, "-  It does not connect to the internet. Nothing is uploaded.");
+        cl_ui::body(ui, "-  It does not run, open or load your model files.");
+        cl_ui::body(ui, "-  It does not copy your weights, your data, your code or your prompts.");
+        cl_ui::body(ui, "-  It removes passwords, API keys and your Windows user name.");
+        ui.add_space(6.0);
+        cl_ui::muted(ui, "Before it reads anything, it shows you exactly what would be sent.");
 
         ui.add_space(18.0);
         if cl_ui::primary_button(ui, "Continue", true) {
-            self.step = Step::Claim;
+            self.step = Step::Folders;
         }
     }
 
-    fn claim_screen(&mut self, ui: &mut egui::Ui) {
-        cl_ui::h1(ui, "The statement being checked");
+    /// Shown when the program was sent on its own, without the request file.
+    ///
+    /// The earlier version of this screen let the vendor type a case reference and
+    /// the claim by hand. That was a mistake twice over: it asked the least willing
+    /// participant to do data entry, and it let the sentence under test be rewritten
+    /// by the party it is testing. There is now no way past this screen except to
+    /// supply the file the buyer actually issued.
+    fn no_request(&mut self, ui: &mut egui::Ui) {
+        cl_ui::h1(ui, "The request file is missing");
         ui.add_space(8.0);
-
-        if self.challenge.is_some() {
-            cl_ui::field(ui, "Requested by", &self.vendor);
-            cl_ui::field(ui, "Case", &self.case_id);
-            ui.add_space(10.0);
-            cl_ui::h2(ui, "They asked about this claim");
-            egui::Frame::NONE
-                .fill(egui::Color32::from_rgb(0xf2, 0xf3, 0xf5))
-                .inner_margin(egui::Margin::same(12))
-                .corner_radius(4.0)
-                .show(ui, |ui| {
-                    ui.label(egui::RichText::new(&self.claim).size(15.0).italics());
-                });
-        } else {
-            cl_ui::body(ui, "Fill these in with whoever asked you for this.");
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label("Case reference");
-                ui.text_edit_singleline(&mut self.case_id);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Your organisation");
-                ui.text_edit_singleline(&mut self.vendor);
-            });
-            ui.label("The claim being checked");
-            ui.text_edit_multiline(&mut self.claim);
-        }
-
-        ui.add_space(16.0);
-        cl_ui::h2(ui, "How would you describe your system?");
-        cl_ui::muted(
+        cl_ui::body(
             ui,
-            "Answer as best you can. Leaving something blank is fine and is not held against you.",
+            "Whoever asked you for this sent a small file called challenge.json. It should \
+             sit in the same folder as this program.",
         );
-        ui.add_space(8.0);
-
-        combo(ui, "Where the weights came from", &mut self.origin, WeightOrigin::ALL, |v| {
-            match v {
-                WeightOrigin::RandomInitializationClaimed => "We trained from scratch",
-                WeightOrigin::DerivativeOfDisclosedBase => "We started from an existing model",
-                WeightOrigin::DistilledFromTeacher => "We distilled it from a larger model",
-                WeightOrigin::Unknown => "Not sure",
-            }
-        });
-        combo(ui, "How the weights changed", &mut self.update, ParameterUpdate::ALL, |v| match v {
-            ParameterUpdate::NoUpdateObserved => "We did not change any weights",
-            ParameterUpdate::UnmergedPeftObserved => "We used an adapter (LoRA or similar)",
-            ParameterUpdate::MergedAdapterConsistent => "We used an adapter and merged it in",
-            ParameterUpdate::PartialOrDenseUpdate => "We fine-tuned the weights directly",
-            ParameterUpdate::Unknown => "Not sure",
-        });
-        combo(ui, "What kind of training", &mut self.stage, TrainingStage::ALL, |v| match v {
-            TrainingStage::ContinuedPretraining => "More pre-training on our own text",
-            TrainingStage::SupervisedInstructionTuning => "Instruction / supervised fine-tuning",
-            TrainingStage::PreferenceTuning => "Preference tuning (RLHF, DPO)",
-            TrainingStage::Distillation => "Distillation from a teacher model",
-            TrainingStage::OtherOrUnknown => "Something else, or not sure",
-        });
-
-        ui.add_space(8.0);
-        ui.label("What else runs when the system answers a question?");
-        for v in InferenceAugmentation::ALL {
-            let mut on = self.augmentation.contains(v);
-            let label = match v {
-                InferenceAugmentation::Rag => "It looks things up in a document store (RAG)",
-                InferenceAugmentation::ExternalApiRouter => "It calls an outside AI service",
-                InferenceAugmentation::ToolsPromptOrchestration => "It uses tools or prompt chaining",
-                InferenceAugmentation::LocalDirectInference => "It just runs our own model directly",
-                InferenceAugmentation::NoneObservedOrUnknown => "Not sure",
-            };
-            if ui.checkbox(&mut on, label).changed() {
-                if on {
-                    self.augmentation.push(*v);
-                } else {
-                    self.augmentation.retain(|x| x != v);
+        ui.add_space(12.0);
+        cl_ui::callout(
+            ui,
+            cl_ui::colour::ATTENTION,
+            "What to do",
+            "Go back to their e-mail and save the whole folder they attached, keeping the \
+             files together. Then open this program from inside that folder.",
+        );
+        ui.add_space(16.0);
+        if cl_ui::secondary_button(ui, "Find the file myself") {
+            if let Some(f) = rfd::FileDialog::new()
+                .set_title("Open the request file you were sent")
+                .add_filter("Request file", &["json"])
+                .pick_file()
+            {
+                match f.parent().and_then(find_challenge_in) {
+                    Some((ch, bytes, sig)) => {
+                        self.case_id = ch.case_id.as_str().to_string();
+                        self.vendor = ch.vendor_label.clone();
+                        self.claim = ch.exact_claim_text.clone();
+                        self.challenge = Some(ch);
+                        self.challenge_bytes = Some(bytes);
+                        self.challenge_sig = sig;
+                        self.error = None;
+                    }
+                    None => {
+                        self.error = Some(
+                            "That folder does not hold a request this program can read. Look \
+                             for the folder containing challenge.json."
+                                .to_string(),
+                        );
+                    }
                 }
             }
         }
-
-        ui.add_space(18.0);
-        ui.horizontal(|ui| {
-            if cl_ui::secondary_button(ui, "Back") {
-                self.step = Step::Welcome;
-            }
-            let ok = CaseId::parse(&self.case_id).is_ok();
-            if cl_ui::primary_button(ui, "Continue", ok) {
-                self.step = Step::Folders;
-            }
-            if !ok {
-                ui.label(
-                    egui::RichText::new("A case reference like CL-2026-0F3A9C is needed")
-                        .size(12.0)
-                        .color(cl_ui::colour::MUTED),
-                );
-            }
-        });
     }
 
     fn folders(&mut self, ui: &mut egui::Ui) {
@@ -622,7 +553,7 @@ impl App {
         ui.add_space(18.0);
         ui.horizontal(|ui| {
             if cl_ui::secondary_button(ui, "Back") {
-                self.step = Step::Claim;
+                self.step = Step::Welcome;
             }
             if cl_ui::primary_button(ui, "Continue", !self.roots.is_empty()) {
                 self.step = Step::Preflight;
@@ -788,7 +719,7 @@ impl App {
         }
 
         ui.add_space(16.0);
-        cl_ui::h2(ui, "What it says about your system");
+        cl_ui::h2(ui, "What the files showed");
         for (facet, band, named) in &f.facets {
             ui.horizontal(|ui| {
                 cl_ui::badge(ui, band.render(), cl_ui::band_colour(*band));
@@ -804,7 +735,8 @@ impl App {
             cl_ui::muted(
                 ui,
                 &format!(
-                    "The report also records {} thing(s) this scan was not able to see. Those                      are limitations of the scan, not findings about you.",
+                    "The report also notes {} thing(s) this scan could not see. Those are \
+                     limits of the scan itself.",
                     f.limitation_count
                 ),
             );
@@ -815,9 +747,9 @@ impl App {
             ui,
             cl_ui::colour::NEUTRAL,
             "If it says there was not enough evidence",
-            "That is not an accusation. It means the files needed to answer that question \
-             were not in the folders you picked. You can go back, add more folders, and run \
-             it again.",
+            "It means the files that would answer that question were not in the folders you \
+             picked. That is a normal result. You can go back, add more folders and run it \
+             again.",
         );
 
         ui.add_space(16.0);
@@ -829,41 +761,6 @@ impl App {
     }
 }
 
-/// A labelled dropdown over a `str_enum`, with vendor-facing wording.
-fn combo<T: PartialEq + Copy + 'static>(
-    ui: &mut egui::Ui,
-    label: &str,
-    slot: &mut Option<T>,
-    all: &'static [T],
-    text: fn(&T) -> &'static str,
-) {
-    ui.horizontal(|ui| {
-        ui.allocate_ui_with_layout(
-            egui::vec2(240.0, 20.0),
-            egui::Layout::left_to_right(egui::Align::Min),
-            |ui| {
-                ui.label(egui::RichText::new(label).size(13.5));
-            },
-        );
-        let current = slot.map(|v| text(&v)).unwrap_or("Prefer not to say");
-        egui::ComboBox::from_id_salt(label).selected_text(current).width(320.0).show_ui(
-            ui,
-            |ui| {
-                ui.selectable_value(slot, None, "Prefer not to say");
-                for v in all {
-                    let mut sel = *slot == Some(*v);
-                    if ui.selectable_label(sel, text(v)).clicked() {
-                        sel = true;
-                        *slot = Some(*v);
-                    }
-                    let _ = sel;
-                }
-            },
-        );
-    });
-}
-
-/// Artifact type names are precise and unfriendly; this is the vendor-facing gloss.
 fn friendly_type(t: &str) -> &str {
     match t {
         "safetensors" => "Model weights (SafeTensors)",
@@ -935,14 +832,67 @@ mod tests {
     }
 
     #[test]
-    fn declared_facets_flow_into_the_request() {
+    fn the_only_declaration_comes_from_the_buyers_request() {
+        // The supplier is asked nothing about their own system, so a scan with no
+        // request must assert nothing at all. If this ever starts returning a
+        // populated set, some screen has grown a question it should not be asking.
         let mut app = App::default();
         app.case_id = "CL-2026-0F3A9C".into();
-        app.update = Some(ParameterUpdate::UnmergedPeftObserved);
-        app.augmentation.push(InferenceAugmentation::Rag);
+        assert_eq!(app.request().unwrap().declared, DeclaredFacets::default());
+
+        let (ch, bytes) = a_challenge();
+        app.challenge = Some(ch);
+        app.challenge_bytes = Some(bytes);
         let r = app.request().unwrap();
-        assert_eq!(r.declared.parameter_update, Some(ParameterUpdate::UnmergedPeftObserved));
-        assert_eq!(r.declared.inference_augmentation, vec![InferenceAugmentation::Rag]);
+        assert_eq!(
+            r.declared.weight_origin,
+            Some(cl_core::vocab::WeightOrigin::RandomInitializationClaimed),
+            "the claim under test must reach the rules from the request"
+        );
+        assert_eq!(r.declared.parameter_update, None, "the scanner infers method, it is not told");
+        assert!(r.declared.inference_augmentation.is_empty());
+    }
+
+    #[test]
+    fn no_forbidden_language_in_the_vendor_interface() {
+        // This window is read by the party being screened, so a single loaded word
+        // here does more damage than anywhere else in the product. The auditor
+        // application has carried this guard from the start; the omission on this
+        // side was an oversight, and it is the side that matters more.
+        let src = include_str!("main.rs");
+        for line in src.lines() {
+            let t = line.trim();
+            if t.starts_with("//") {
+                continue;
+            }
+            if let Some(bad) = cl_core::vocab::forbidden_language(t) {
+                panic!("forbidden language `{bad}` in: {t}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_vendor_is_never_asked_to_describe_their_own_system() {
+        // The whole point of the redesign: no control on any screen collects the
+        // supplier's account of what they built. If a dropdown or a free-text claim
+        // box ever comes back, this catches it before a release does.
+        let src = include_str!("main.rs");
+        let body = &src[..src.find("mod tests").unwrap_or(src.len())];
+        for probe in ["text_edit_multiline", "ComboBox", "radio_value"] {
+            assert!(
+                !body.contains(probe),
+                "`{probe}` is back on a vendor screen: the supplier is being asked to                  state their own case again"
+            );
+        }
+    }
+
+    #[test]
+    fn without_a_request_there_is_no_way_into_the_scan() {
+        // The vendor cannot type their way past a missing case file, because that
+        // would let the party being tested author the sentence being tested.
+        let app = App::default();
+        assert!(app.challenge.is_none());
+        assert_eq!(app.step as usize, Step::Welcome as usize);
     }
 
     fn temp_kit(tag: &str) -> PathBuf {
@@ -963,6 +913,7 @@ mod tests {
             14,
             vec![],
             None,
+            Some(cl_core::vocab::WeightOrigin::RandomInitializationClaimed),
         );
         let b = c.to_canonical_bytes().unwrap();
         (c, b)

@@ -23,7 +23,7 @@ mod kit;
 
 use cl_core::ids::{CaseId, Nonce};
 use cl_core::time::Timestamp;
-use cl_core::vocab::{ChallengeStatus, IntegrityStatus, MarkerStatus, SupportBand};
+use cl_core::vocab::{ChallengeStatus, IntegrityStatus, MarkerStatus, SupportBand, WeightOrigin};
 use cl_verify::{verify_bundle, Recomputation, Verification};
 use eframe::egui;
 use std::path::PathBuf;
@@ -41,6 +41,7 @@ struct App {
     // new case
     vendor: String,
     claim: String,
+    claimed_origin: Option<WeightOrigin>,
     valid_days: i64,
     sign_it: bool,
     // issued
@@ -60,6 +61,10 @@ impl Default for App {
             page: Page::Home,
             vendor: String::new(),
             claim: String::new(),
+            // The claim this product exists to test. Pre-selected because it is why a
+            // buyer opens a case at all, and because leaving it unset silently
+            // disables the rule family that tests it.
+            claimed_origin: Some(WeightOrigin::RandomInitializationClaimed),
             valid_days: 21,
             sign_it: true,
             kit_dir: None,
@@ -151,6 +156,7 @@ impl App {
                 "serving_config".into(),
             ],
             key.as_ref().map(|k| k.public_hex()),
+            self.claimed_origin,
         );
 
         let bytes = match challenge.to_canonical_bytes() {
@@ -276,10 +282,10 @@ impl App {
 
         ui.add_space(24.0);
         cl_ui::h2(ui, "How it works");
-        cl_ui::body(ui, "1.  You describe the vendor and the exact claim you want tested.");
-        cl_ui::body(ui, "2.  Cladeon makes a folder. You e-mail it to the vendor.");
+        cl_ui::body(ui, "1.  You write down who you are asking and what they told you.");
+        cl_ui::body(ui, "2.  Cladeon makes a folder. You e-mail it to them.");
         cl_ui::body(ui, "3.  They double-click one program and send back one file.");
-        cl_ui::body(ui, "4.  You open that file here and read the result.");
+        cl_ui::body(ui, "4.  You open that file here and read the report.");
 
         ui.add_space(18.0);
         cl_ui::callout(
@@ -302,11 +308,12 @@ impl App {
         cl_ui::muted(ui, "The supplier's name, as you would write it in a report.");
 
         ui.add_space(12.0);
-        cl_ui::h2(ui, "What exactly did they claim?");
+        cl_ui::h2(ui, "What exactly did they tell you?");
         cl_ui::muted(
             ui,
-            "Paste their words, not a summary. This sentence is quoted into the report and \
-             is the thing the evidence gets measured against.",
+            "Paste their own words from the pitch, tender or datasheet - not a summary. \
+             This sentence is quoted into the report, and they are never asked to restate \
+             it.",
         );
         ui.add_space(4.0);
         ui.add(
@@ -315,6 +322,19 @@ impl App {
                 .desired_rows(3)
                 .hint_text("e.g. \"We trained our own large language model from scratch.\""),
         );
+
+        ui.add_space(14.0);
+        cl_ui::h2(ui, "In short, what are they saying they built?");
+        cl_ui::muted(ui, "This decides which checks are worth running.");
+        ui.add_space(4.0);
+        for (opt, label) in [
+            (Some(WeightOrigin::RandomInitializationClaimed), "They trained their own model"),
+            (Some(WeightOrigin::DerivativeOfDisclosedBase), "They built on someone else's model"),
+            (Some(WeightOrigin::DistilledFromTeacher), "They copied a bigger model's behaviour"),
+            (None, "They did not say"),
+        ] {
+            ui.radio_value(&mut self.claimed_origin, opt, label);
+        }
 
         ui.add_space(14.0);
         ui.horizontal(|ui| {

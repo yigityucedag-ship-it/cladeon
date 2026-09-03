@@ -325,6 +325,16 @@ fn run_scan(a: RunArgs) -> ExitCode {
     let claim = challenge.as_ref().map(|c| c.exact_claim_text.clone()).unwrap_or(a.claim);
     let nonce = challenge.as_ref().map(|c| c.nonce.as_str().to_string()).unwrap_or_default();
 
+    // The claim under test belongs to the buyer, exactly like the case id and the
+    // claim text above. `--weight-origin` survives only for scans run with no
+    // challenge at all; when one is present it cannot be talked over from the
+    // command line, because that is the one edit that would change what the report
+    // measures against.
+    let mut facets = a.facets;
+    if let Some(c) = &challenge {
+        facets.weight_origin = c.claimed_origin;
+    }
+
     let sig = a.challenge_sig.as_ref().and_then(|p| match std::fs::read(p) {
         Ok(b) => Some(b),
         Err(e) => {
@@ -339,7 +349,7 @@ fn run_scan(a: RunArgs) -> ExitCode {
         case_id: case_id.clone(),
         vendor_label: vendor,
         exact_claim_text: claim,
-        declared: a.facets,
+        declared: facets,
         hash_files: a.hash_files,
         limits: Limits::default(),
         challenge_bytes,

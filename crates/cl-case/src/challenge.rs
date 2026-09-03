@@ -17,7 +17,7 @@ use cl_core::error::{ClError, ClResult};
 use cl_core::ids::{CaseId, Nonce};
 use cl_core::limits::Limits;
 use cl_core::time::Timestamp;
-use cl_core::vocab::ChallengeStatus;
+use cl_core::vocab::{ChallengeStatus, WeightOrigin};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Challenge {
@@ -34,10 +34,24 @@ pub struct Challenge {
     pub requested_evidence: Vec<String>,
     /// Ed25519 public key of the issuer, hex. Absent for an unsigned pilot case.
     pub issuer_public_key: Option<String>,
+    /// What the buyer says the supplier claimed, recorded when the case is opened.
+    ///
+    /// This lives in the challenge rather than being asked at scan time on purpose.
+    /// The supplier already made their claim — in a pitch, a tender response or a
+    /// datasheet — and asking them to restate it in front of the scanner invites a
+    /// quieter second version, tuned to whatever the files happen to show. Fixing it
+    /// here means the sentence being tested is the one the buyer actually heard, and
+    /// the supplier's only job is to show their files.
+    pub claimed_origin: Option<WeightOrigin>,
 }
 
 impl Challenge {
     /// Build a challenge from a supplied clock, so issuance is testable.
+    // Nine positional arguments is past the comfortable limit, but every one is a
+    // distinct type, so a misordering is a compile error rather than a silently
+    // mislabelled case. A builder would read better and is the right change if this
+    // grows again.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         case_id: CaseId,
         nonce: Nonce,
@@ -47,6 +61,7 @@ impl Challenge {
         valid_days: i64,
         requested_evidence: Vec<String>,
         issuer_public_key: Option<String>,
+        claimed_origin: Option<WeightOrigin>,
     ) -> Challenge {
         Challenge {
             case_id,
@@ -60,6 +75,7 @@ impl Challenge {
             vocabulary_version: cl_core::VOCABULARY_VERSION,
             requested_evidence,
             issuer_public_key,
+            claimed_origin,
         }
     }
 
@@ -80,7 +96,8 @@ impl Challenge {
                 .with("vocabulary_version", self.vocabulary_version)
                 .with("requested_evidence", arr(ev))
                 .with_opt("expected_scanner_sha256", self.expected_scanner_sha256.clone())
-                .with_opt("issuer_public_key", self.issuer_public_key.clone()),
+                .with_opt("issuer_public_key", self.issuer_public_key.clone())
+                .with_opt("claimed_origin", self.claimed_origin.map(|v| v.as_str().to_string())),
         )
     }
 
@@ -129,6 +146,13 @@ impl Challenge {
                 .get("issuer_public_key")
                 .and_then(|x| x.as_str())
                 .map(|x| x.to_string()),
+            // Absent in a case opened before this field existed, and absent whenever
+            // the buyer said they did not know what was claimed. Both mean the same
+            // thing to the rules: nothing is asserted, so nothing is tested against.
+            claimed_origin: v
+                .get("claimed_origin")
+                .and_then(|x| x.as_str())
+                .and_then(WeightOrigin::parse),
         })
     }
 
@@ -197,7 +221,30 @@ mod tests {
             14,
             vec!["adapter_config".into(), "base_identity".into()],
             pk,
+            Some(WeightOrigin::RandomInitializationClaimed),
         )
+    }
+
+    #[test]
+    fn the_claimed_origin_survives_a_round_trip_and_is_covered_by_the_signature() {
+        let c = sample(None);
+        let bytes = c.to_canonical_bytes().unwrap();
+        assert_eq!(Challenge::parse(&bytes).unwrap(), c);
+        assert!(
+            String::from_utf8_lossy(&bytes).contains("claimed_origin"),
+            "the claim under test must be inside the signed bytes, not alongside them"
+        );
+    }
+
+    #[test]
+    fn a_case_that_says_nothing_about_the_claim_parses_as_saying_nothing() {
+        // Buyers who do not know what was claimed, and cases issued before this field
+        // existed, must both land on None rather than on a default that asserts.
+        let mut c = sample(None);
+        c.claimed_origin = None;
+        let bytes = c.to_canonical_bytes().unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("claimed_origin"));
+        assert_eq!(Challenge::parse(&bytes).unwrap().claimed_origin, None);
     }
 
     #[test]

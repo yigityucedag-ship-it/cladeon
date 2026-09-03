@@ -41,7 +41,7 @@ Issued by the buyer, signed with Ed25519. The scanner holds only the public key.
   "nonce": "<32 lowercase hex chars>",
   "vendor_label": "Acme Analytics Ltd",
   "exact_claim_text": "We trained our own large language model from scratch.",
-  "declared_facets_requested": true,
+  "claimed_origin": "random_initialization_claimed",
   "issued_at": "2026-09-02T13:00:00Z",
   "expires_at": "2026-09-16T13:00:00Z",
   "expected_scanner_sha256": "<64 hex>",
@@ -54,6 +54,18 @@ Issued by the buyer, signed with Ed25519. The scanner holds only the public key.
 
 `challenge.sig` is the raw 64-byte Ed25519 signature, hex-encoded, over the canonical
 bytes of `challenge.json`.
+
+`claimed_origin` is a `weight_origin` value and is **optional**. It records what the
+buyer says the supplier claimed, and it is the only declaration in the system: the
+scanner asks the supplier nothing about their own model. Putting it here rather than
+in the scanner has two consequences worth stating plainly.
+
+* It is inside the signed bytes, so the sentence being tested cannot be softened
+  after the fact by the party being tested.
+* Its absence is meaningful and is not a default. A case whose buyer selected "they
+  did not say", and any case issued before this field existed, both parse to absent —
+  and rule families that test a training claim then do not run at all, rather than
+  running against an assumption nobody made.
 
 Timestamps are RFC 3339 UTC with a literal `Z` and second precision.
 

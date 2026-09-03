@@ -121,10 +121,10 @@ pub fn band_plain_english(b: SupportBand) -> &'static str {
             "There is real supporting evidence, but not enough to name the method used."
         }
         SupportBand::InsufficientEvidence => {
-            "Not enough was supplied to reach a conclusion. This is not a finding against the vendor."
+            "Not enough was supplied to answer this. That is a normal result, not a mark against anyone."
         }
         SupportBand::Contradicted => {
-            "Something the vendor stated conflicts with a file that was examined."
+            "A file that was examined does not fit the claim being checked."
         }
         SupportBand::NotSupplied => {
             "The kind of file needed to answer this was not in the folders that were scanned."
@@ -313,10 +313,11 @@ mod tests {
     }
 
     #[test]
-    fn insufficient_evidence_says_it_is_not_an_accusation() {
+    fn insufficient_evidence_is_framed_as_a_normal_result() {
         // The single most important sentence in the whole interface.
         let g = band_plain_english(SupportBand::InsufficientEvidence);
-        assert!(g.contains("not a finding against"), "{g}");
+        assert!(g.contains("normal result"), "{g}");
+        assert!(g.contains("not a mark against"), "{g}");
     }
 
     #[test]

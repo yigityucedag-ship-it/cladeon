@@ -157,6 +157,7 @@ mod tests {
             14,
             vec!["adapter_config".into()],
             None,
+            Some(cl_core::vocab::WeightOrigin::RandomInitializationClaimed),
         )
     }
 
