@@ -8,3 +8,8 @@ Cargo.lock.bak
 /scratch/
 .DS_Store
 Thumbs.db
+
+# MSIX build output: binaries and a locally-signed package, never committed.
+/packaging/msix/out/
+*.msix
+*.cer

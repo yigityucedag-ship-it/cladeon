@@ -101,8 +101,39 @@ fn claim_text(origin: Option<WeightOrigin>) -> &'static str {
     }
 }
 
+const KEY_FILE: &str = "cladeon-issuer.key";
+
+/// A key already sitting beside the executable, if there is one.
+///
+/// This is where the key used to live unconditionally, and portable copies on a
+/// shared drive still keep it there. It is checked first so that upgrading does not
+/// silently start issuing cases under a new identity.
+fn portable_key() -> Option<PathBuf> {
+    let p = std::env::current_exe().ok()?.parent()?.join(KEY_FILE);
+    p.is_file().then_some(p)
+}
+
+/// Where a new key is created.
+///
+/// Not beside the executable. That worked while the product was only ever unzipped
+/// into a writable folder, but an installed copy lives somewhere read-only - Program
+/// Files, or the sealed package directory the Microsoft Store installs into - and the
+/// write fails at the exact moment the user is trying to open their first case.
+///
+/// Per-user rather than machine-wide, because it is a private key: two people sharing
+/// a computer should not be issuing cases under one another's identity.
+fn key_home() -> Option<PathBuf> {
+    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).or_else(|| {
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))
+    })?;
+    Some(base.join("Cladeon"))
+}
+
 fn key_path() -> Option<PathBuf> {
-    Some(std::env::current_exe().ok()?.parent()?.join("cladeon-issuer.key"))
+    if let Some(p) = portable_key() {
+        return Some(p);
+    }
+    Some(key_home()?.join(KEY_FILE))
 }
 
 fn load_or_create_key() -> Result<cl_case::IssuerKey, String> {
@@ -112,7 +143,12 @@ fn load_or_create_key() -> Result<cl_case::IssuerKey, String> {
         return cl_case::IssuerKey::from_secret_hex(hex.trim()).map_err(|e| format!("{e}"));
     }
     let key = cl_case::IssuerKey::generate().map_err(|e| format!("{e}"))?;
-    std::fs::write(&path, key.to_secret_hex()).map_err(|e| format!("{e}"))?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("the folder for the signing key could not be made: {e}"))?;
+    }
+    std::fs::write(&path, key.to_secret_hex())
+        .map_err(|e| format!("the signing key could not be written to {}: {e}", path.display()))?;
     Ok(key)
 }
 
@@ -684,6 +720,31 @@ mod tests {
         assert_eq!(screen.matches("radio_value").count(), 1, "one question, one control");
     }
 
+
+    #[test]
+    fn a_new_key_is_never_created_inside_the_install_directory() {
+        // An installed copy - Program Files, or the sealed directory the Microsoft
+        // Store installs into - is read-only. Creating the key there fails at the
+        // moment the user opens their first case, which is the worst possible time.
+        let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        let fresh = key_home().expect("a per-user home must resolve").join(KEY_FILE);
+        assert_ne!(
+            fresh.parent(),
+            Some(exe_dir.as_path()),
+            "a new key would be written next to the executable"
+        );
+        assert!(fresh.is_absolute(), "the key home must be absolute: {}", fresh.display());
+    }
+
+    #[test]
+    fn an_existing_portable_key_still_wins() {
+        // Upgrading a copy that already has a key beside it must not silently start
+        // issuing cases under a new identity.
+        match portable_key() {
+            Some(p) => assert_eq!(key_path().as_deref(), Some(p.as_path())),
+            None => assert_eq!(key_path(), key_home().map(|h| h.join(KEY_FILE))),
+        }
+    }
 
     #[test]
     fn the_signing_key_is_never_part_of_the_kit() {

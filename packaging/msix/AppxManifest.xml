@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  Cladeon, packaged for the Microsoft Store.
+
+  Two values in <Identity> and one in <PublisherDisplayName> are placeholders. They
+  are issued by Partner Center when the app name is reserved, and the package will be
+  rejected at upload if they do not match the reservation exactly. build.ps1 accepts
+  them as parameters, so the manifest is never edited by hand for a real submission.
+
+  The package declares runFullTrust and nothing else. It is an ordinary Win32 program
+  that reads folders the user picks and writes a file where the user says; it opens no
+  network connection and needs no broader capability. Anything more here would be a
+  claim the software does not make.
+-->
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="PLACEHOLDER.Cladeon"
+    Publisher="CN=PLACEHOLDER"
+    Version="0.1.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Cladeon</DisplayName>
+    <PublisherDisplayName>PLACEHOLDER</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Check whether a supplier's files fit what they told you about how their AI was built.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-gb" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Cladeon" Executable="Cladeon.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Cladeon"
+        Description="Check whether a supplier's files fit what they told you about how their AI was built."
+        BackgroundColor="#182230"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#182230" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+</Package>
