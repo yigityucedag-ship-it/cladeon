@@ -24,10 +24,15 @@ use std::path::{Path, PathBuf};
 /// this program small and lets the pair be updated independently.
 pub fn scanner_beside_us() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    for name in ["cladeon-screen.exe", "cladeon-screen"] {
-        let p = dir.join(name);
-        if p.is_file() {
-            return Some(p);
+    // Beside the application first, then in a `Scanner` subfolder. The subfolder is
+    // what the distributed package uses: two executables side by side at the top
+    // level makes the buyer choose between them, and half of them will choose wrong.
+    for base in [dir.clone(), dir.join("Scanner")] {
+        for name in ["cladeon-screen.exe", "cladeon-screen"] {
+            let p = base.join(name);
+            if p.is_file() {
+                return Some(p);
+            }
         }
     }
     None

@@ -206,6 +206,28 @@ impl App {
         }
     }
 
+    /// Write the instruction booklet wherever the user asks for it.
+    ///
+    /// The application does not open it afterwards. Nothing in this product spawns
+    /// another process, and a PDF viewer is not the exception worth making: the save
+    /// dialog already told the user where the file went.
+    fn save_guide(&mut self) {
+        self.error = None;
+        self.notice = None;
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Save the instructions")
+            .set_file_name(cl_report::GUIDE_FILE_NAME)
+            .add_filter("PDF", &["pdf"])
+            .save_file()
+        else {
+            return;
+        };
+        match std::fs::write(&path, cl_report::guide::render()) {
+            Ok(()) => self.notice = Some(format!("Instructions saved to {}", path.display())),
+            Err(e) => self.error = Some(format!("the instructions could not be saved: {e}")),
+        }
+    }
+
     fn open_bundle(&mut self) {
         self.error = None;
         let Some(path) = rfd::FileDialog::new()
@@ -295,6 +317,10 @@ impl App {
             ui.add_space(8.0);
             if cl_ui::secondary_button(ui, "Open a file a vendor sent back") {
                 self.open_bundle();
+            }
+            ui.add_space(8.0);
+            if cl_ui::secondary_button(ui, "How to use this (PDF)") {
+                self.save_guide();
             }
         });
 

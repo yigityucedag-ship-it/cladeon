@@ -661,6 +661,7 @@ version = "0.1.0"
 dependencies = [
  "cl-case",
  "cl-core",
+ "cl-report",
  "cl-ui",
  "cl-verify",
  "eframe",
