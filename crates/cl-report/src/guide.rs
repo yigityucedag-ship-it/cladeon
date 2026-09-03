@@ -48,6 +48,29 @@ pub fn render() -> Vec<u8> {
 
     b.rule();
 
+    // ---- the warning they will hit before anything else ---------------------
+    //
+    // This section exists because the first thing a new user sees is a full-screen
+    // blue warning, and a manual that does not mention it reads as either careless
+    // or evasive. Saying it plainly, and giving them a way to check the file
+    // themselves, is worth more than pretending the warning is not there.
+    b.heading(1, "Before you run it: the Windows warning");
+    b.paragraph(
+        "Windows will show a blue box saying \"Windows protected your PC\" the first          time you open Cladeon. Choose \"More info\", then \"Run anyway\".",
+    );
+    b.paragraph(
+        "This is not a virus warning and nothing has been detected. Windows shows it          for any program that has not been signed with a paid certificate, which this          one has not. It is free software given away rather than sold, and a          certificate costs money every year.",
+    );
+    b.paragraph(
+        "You do not have to take that on trust. The folder holds a file called          Checksums.txt with a fingerprint of each program. If someone tampered with a          copy on its way to you, the fingerprint would not match. To check one, open          PowerShell and run:",
+    );
+    b.paragraph(r"    Get-FileHash .\Cladeon.exe");
+    b.paragraph(
+        "The source code is also published, so anyone who wants to can read it or          build their own copy rather than trusting this one.",
+    );
+
+    b.rule();
+
     // ---- the walkthrough ----------------------------------------------------
     b.heading(1, "Doing a check, start to finish");
 
@@ -217,6 +240,22 @@ mod tests {
         for bad in ["proves that", "detects fake", "tells you if they", "will show you whether they"]
         {
             assert!(!t.contains(bad), "the guide over-claims: `{bad}`");
+        }
+    }
+
+    #[test]
+    fn the_guide_explains_the_windows_warning_without_dismissing_it() {
+        // A manual that stays silent about a full-screen security warning reads as
+        // careless or evasive, and it is the first thing a new user meets.
+        let t = text();
+        assert!(t.contains("Windows protected your PC"), "the warning is not quoted");
+        assert!(t.contains("Run anyway"), "the way past it is not given");
+        assert!(t.contains("has not been signed"), "the reason is not stated");
+        assert!(t.contains("Checksums.txt"), "no way to check the file independently");
+        // It must not tell the reader the warning is meaningless or safe to ignore.
+        let lower = t.to_lowercase();
+        for bad in ["ignore this", "perfectly safe", "false positive", "harmless warning"] {
+            assert!(!lower.contains(bad), "the guide waves away a security warning: `{bad}`");
         }
     }
 
