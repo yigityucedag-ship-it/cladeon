@@ -56,17 +56,25 @@ pub fn render() -> Vec<u8> {
     // themselves, is worth more than pretending the warning is not there.
     b.heading(1, "Before you run it: the Windows warning");
     b.paragraph(
-        "Windows will show a blue box saying \"Windows protected your PC\" the first          time you open Cladeon. Choose \"More info\", then \"Run anyway\".",
+        "Windows will show a blue box saying \"Windows protected your PC\" the first time \
+         you open Cladeon. Choose \"More info\", then \"Run anyway\".",
     );
     b.paragraph(
-        "This is not a virus warning and nothing has been detected. Windows shows it          for any program that has not been signed with a paid certificate, which this          one has not. It is free software given away rather than sold, and a          certificate costs money every year.",
+        "This is not a virus warning and nothing has been detected. Windows shows it for \
+         any program that has not been signed with a paid certificate, which this one has \
+         not. It is free software given away rather than sold, and a certificate costs \
+         money every year.",
     );
     b.paragraph(
-        "You do not have to take that on trust. The folder holds a file called          Checksums.txt with a fingerprint of each program. If someone tampered with a          copy on its way to you, the fingerprint would not match. To check one, open          PowerShell and run:",
+        "You do not have to take that on trust. The folder holds a file called \
+         Checksums.txt with a fingerprint of each program. If someone tampered with a copy \
+         on its way to you, the fingerprint would not match. To check one, open PowerShell \
+         and run:",
     );
     b.paragraph(r"    Get-FileHash .\Cladeon.exe");
     b.paragraph(
-        "The source code is also published, so anyone who wants to can read it or          build their own copy rather than trusting this one.",
+        "The source code is also published, so anyone who wants to can read it or build \
+         their own copy rather than trusting this one.",
     );
 
     b.rule();
