@@ -9,13 +9,39 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The workspace root.
+///
+/// `CARGO_MANIFEST_DIR` is baked in at compile time, so a test binary compiled at
+/// one path and then run after the checkout was *moved* points at a directory that
+/// no longer exists — and every file-reading contract test fails with a confusing
+/// "cannot read" error that looks like a real violation. That happened once here,
+/// when the project was renamed and its folder moved.
+///
+/// So the compile-time path is used only if it still exists, and otherwise the root
+/// is found by walking up from the current directory looking for the workspace
+/// manifest. Failing to locate it at all is a clear panic, not a silent wrong answer.
 fn repo_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR is crates/cl-contracts; the workspace root is two above.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let compiled = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
-        .expect("workspace root")
-        .to_path_buf()
+        .map(|p| p.to_path_buf());
+    if let Some(p) = compiled {
+        if p.join("Cargo.toml").is_file() && p.join("crates").is_dir() {
+            return p;
+        }
+    }
+    let mut dir = std::env::current_dir().expect("current directory");
+    loop {
+        if dir.join("Cargo.toml").is_file() && dir.join("crates").is_dir() {
+            return dir;
+        }
+        if !dir.pop() {
+            panic!(
+                "cannot locate the workspace root from the compiled path or from {:?}",
+                std::env::current_dir()
+            );
+        }
+    }
 }
 
 fn read(p: &Path) -> String {
