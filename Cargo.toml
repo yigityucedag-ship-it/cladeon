@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/cl-auditor-gui",
     "crates/cl-contracts",
     "crates/cl-core",
     "crates/cl-facts",
@@ -12,6 +13,8 @@ members = [
     "crates/cl-bundle",
     "crates/cl-case",
     "crates/cl-screen",
+    "crates/cl-screen-gui",
+    "crates/cl-ui",
     "crates/cl-verify",
     "crates/cl-fixtures",
 ]
@@ -45,12 +48,21 @@ cl-markers = { path = "crates/cl-markers" }
 cl-report = { path = "crates/cl-report" }
 cl-bundle = { path = "crates/cl-bundle" }
 cl-case = { path = "crates/cl-case" }
+cl-screen = { path = "crates/cl-screen" }
+cl-verify = { path = "crates/cl-verify" }
+cl-ui = { path = "crates/cl-ui" }
 cl-fixtures = { path = "crates/cl-fixtures" }
 
 sha2 = { version = "0.10", default-features = false }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
 getrandom = "0.2"
 clap = { version = "4", features = ["derive"] }
+
+# GUI only. These never see a vendor artifact or a bundle byte; the
+# per-crate dependency policy in cl-contracts enforces that.
+eframe = "0.32"
+egui = "0.32"
+rfd = "0.17"
 
 [profile.release]
 opt-level = "z"

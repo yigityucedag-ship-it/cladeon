@@ -5,7 +5,7 @@
 
 #![forbid(unsafe_code)]
 
-mod verify;
+use cl_verify::verify;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

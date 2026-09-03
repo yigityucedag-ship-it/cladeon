@@ -49,7 +49,7 @@ fn scan_case(c: &cl_fixtures::Case) -> ScanResult {
         challenge_bytes: None,
     };
     let r =
-        run(&req, &|| false).unwrap_or_else(|e| panic!("case `{}` failed to scan: {e}", c.name));
+        run(&req, &|| false, &mut |_| {}).unwrap_or_else(|e| panic!("case `{}` failed to scan: {e}", c.name));
     let _ = std::fs::remove_dir_all(&root);
     r
 }
@@ -261,8 +261,8 @@ fn the_whole_corpus_is_reproducible() {
             limits: Limits::default(),
             challenge_bytes: None,
         };
-        let a = run(&req(), &|| false).expect("first scan");
-        let b = run(&req(), &|| false).expect("second scan");
+        let a = run(&req(), &|| false, &mut |_| {}).expect("first scan");
+        let b = run(&req(), &|| false, &mut |_| {}).expect("second scan");
         assert_eq!(
             a.report.evidence_digest, b.report.evidence_digest,
             "case `{}` produced a different evidence digest on a second scan of the same tree",

@@ -515,7 +515,7 @@ pub fn verify_bundle(
 ///
 /// Absence is not a fault. A report may legitimately carry no marker, and that is
 /// `absent`, not a failure.
-fn check_markers(
+pub(crate) fn check_markers(
     markers_json: Option<&[u8]>,
     pdf: Option<&[u8]>,
     findings: &mut Vec<String>,

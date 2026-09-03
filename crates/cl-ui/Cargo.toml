@@ -1,0 +1,13 @@
+[package]
+name = "cl-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+cl-core.workspace = true
+cl-rules.workspace = true

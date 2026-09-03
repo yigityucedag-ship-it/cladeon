@@ -21,10 +21,11 @@ Stage-1 MVP, CLI-first, working end to end.
 
 | | |
 |---|---|
-| Tests | **648**, all passing |
+| Tests | **677**, all passing |
 | Compiler warnings | **0** |
-| Release binaries | `cladeon-screen` 0.79 MB, `cladeon-verify` 0.54 MB, `cladeon-fixtures` 0.35 MB |
-| Third-party dependencies | **4** — `sha2`, `ed25519-dalek`, `getrandom`, `clap` |
+| Applications | `cladeon` 3.3 MB, `cladeon-screen` 3.5 MB — double-click, no install |
+| Command line | `cladeon-screen-cli` 0.8 MB, `cladeon-verify` 0.6 MB, `cladeon-fixtures` 0.3 MB |
+| Third-party deps in the engine | **3** — `sha2`, `ed25519-dalek`, `getrandom` |
 | Golden fixture cases | 15, of which 5 require abstention |
 
 The plan targeted a 10–30 MB scanner. It came in at **0.79 MB**, because nothing
@@ -63,13 +64,39 @@ See what a scan would touch, before it touches anything:
 
 ## The product family
 
-| Name | Role |
-|---|---|
-| **Cladeon Screen** (`cladeon-screen`) | Vendor-side portable scanner |
-| **Cladeon Verify** (`cladeon-verify`) | Buyer-side bundle verifier |
-| **Cladeon Fixtures** (`cladeon-fixtures`) | The golden corpus |
-| **`.clade`** | The single emailed evidence bundle |
-| *Cladeon Forensics* | Stage 2, out of scope for this repo |
+| Name | Who runs it | Role |
+|---|---|---|
+| **Cladeon** (`cladeon`) | Auditor | Desktop app: open a case, read what comes back |
+| **Cladeon Screen** (`cladeon-screen`) | Vendor | Desktop app: the thing you e-mail them |
+| `cladeon-screen-cli` | Either | The same scan, for scripts and CI |
+| `cladeon-verify` | Auditor | The same verification, for scripts and CI |
+| `cladeon-fixtures` | Developers | The golden corpus |
+| **`.clade`** | — | The single e-mailed evidence bundle |
+| *Cladeon Forensics* | — | Stage 2, out of scope for this repo |
+
+---
+
+## For people who do not use a terminal
+
+Nobody in this workflow has to type a command.
+
+```
+YOU open Cladeon        →  "Start a new check"
+                        →  name the vendor, paste their exact claim
+                        →  it writes a folder. Zip it, e-mail it.
+
+THEY unzip, double-click cladeon-screen.exe
+                        →  six plain-English screens
+                        →  it shows what will be sent BEFORE reading anything
+                        →  saves one .clade file. They e-mail it back.
+
+YOU drop that file into Cladeon  →  five separate answers, in plain language
+```
+
+The vendor never sees a command line, never has to find a file, and never has to
+know what a "challenge" is — the case file sits beside the scanner and is picked up
+automatically. The first screen they see says what the program *will not* do before
+it asks for anything, because that is their actual first question.
 
 ---
 
@@ -148,8 +175,10 @@ wording.
       cl-report/      report.json assembly, deterministic PDF writer and reader
       cl-bundle/      .clade container - STORED entries only
       cl-case/        challenge issuance and Ed25519 binding
-      cl-screen/      vendor CLI            cl-verify/  buyer CLI
-                      (binaries: cladeon-screen, cladeon-verify, cladeon-fixtures)
+      cl-screen/      scan pipeline as a library, plus the CLI
+      cl-verify/      verification as a library, plus the CLI
+      cl-ui/          shared theme and vocabulary rendering for both apps
+      cl-screen-gui/  the vendor's window      cl-auditor-gui/  the auditor's window
       cl-fixtures/    golden corpus         cl-contracts/  workspace-wide invariants
     docs/             frozen Phase-0 contracts
 

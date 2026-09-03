@@ -9,16 +9,11 @@
 
 #![forbid(unsafe_code)]
 
-mod scan;
-
-#[cfg(test)]
-mod corpus;
+use cl_screen::{scan, seal};
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use cl_bundle::Payload;
-use cl_core::canon::{CanonValue, Obj};
 use cl_core::ids::CaseId;
 use cl_core::limits::Limits;
 use cl_core::redact::Redactor;
@@ -303,8 +298,7 @@ fn run_scan(a: RunArgs) -> ExitCode {
         },
         None => None,
     };
-    let parsed = challenge_bytes.as_ref().map(|b| cl_case::Challenge::parse(b));
-    let challenge = match parsed {
+    let challenge = match challenge_bytes.as_ref().map(|b| cl_case::Challenge::parse(b)) {
         Some(Ok(c)) => Some(c),
         Some(Err(e)) => {
             eprintln!("the challenge could not be read: {e}");
@@ -331,6 +325,14 @@ fn run_scan(a: RunArgs) -> ExitCode {
     let claim = challenge.as_ref().map(|c| c.exact_claim_text.clone()).unwrap_or(a.claim);
     let nonce = challenge.as_ref().map(|c| c.nonce.as_str().to_string()).unwrap_or_default();
 
+    let sig = a.challenge_sig.as_ref().and_then(|p| match std::fs::read(p) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            eprintln!("warning: challenge signature not included: {e}");
+            None
+        }
+    });
+
     let req = scan::ScanRequest {
         roots: a.roots,
         excluded: a.excluded,
@@ -340,88 +342,24 @@ fn run_scan(a: RunArgs) -> ExitCode {
         declared: a.facets,
         hash_files: a.hash_files,
         limits: Limits::default(),
-        challenge_bytes: challenge_bytes.clone(),
+        challenge_bytes,
     };
 
-    let result = match scan::run(&req, &|| false) {
-        Ok(r) => r,
+    let sealed = match seal::scan_and_seal(&req, &a.out, &nonce, sig, &|| false, &mut |_| {}) {
+        Ok(s) => s,
         Err(e) => {
             eprintln!("scan failed: {e}");
             return ExitCode::from(2);
         }
     };
+    let result = &sealed.result;
 
-    // ---- markers --------------------------------------------------------
-    let ed = result.report.evidence_digest;
-    let canary = cl_markers::derive_canary(
-        &ed,
-        case_id.as_str(),
-        &nonce,
-        cl_markers::canary::DEFAULT_CANARY_DIGITS,
-    );
-    let tag = cl_markers::tint_tag(&ed, case_id.as_str(), &nonce);
-    let carrier = cl_markers::build_carrier(&tag, 240, 40, cl_markers::tint::RECOMMENDED_BASE);
-    let markers = markers_document(&canary, &tag, &carrier);
-
-    // ---- render ---------------------------------------------------------
-    let pdf = cl_report::render(&result.report, &result.rules, &result.facts, Some(carrier));
-
-    // ---- bundle ---------------------------------------------------------
-    let mut payloads: Vec<Payload> = Vec::new();
-    if let Some(b) = &challenge_bytes {
-        payloads.push(Payload::new(cl_bundle::CHALLENGE_JSON, b.clone()));
-    }
-    if let Some(p) = &a.challenge_sig {
-        match std::fs::read(p) {
-            Ok(b) => payloads.push(Payload::new(cl_bundle::CHALLENGE_SIG, b)),
-            Err(e) => eprintln!("warning: challenge signature not included: {e}"),
-        }
-    }
-    payloads.push(Payload::new(cl_bundle::REPORT_JSON, result.report.to_canonical_bytes()));
-    payloads.push(Payload::new(
-        cl_bundle::ARTIFACT_MANIFEST_JSON,
-        result.report.artifact_manifest.to_canonical_bytes(),
-    ));
-    payloads.push(Payload::new(
-        cl_bundle::FORENSIC_MARKERS_JSON,
-        markers.to_canonical_bytes(),
-    ));
-    payloads.push(Payload::new(cl_bundle::REPORT_PDF, pdf));
-    payloads.push(Payload::new(
-        cl_bundle::VERIFY_TXT,
-        verify_txt(&case_id).into_bytes(),
-    ));
-
-    let envelope = cl_bundle::build_envelope(&payloads);
-    let root = cl_bundle::root_digest(&payloads);
-    payloads.push(Payload::new(
-        cl_bundle::INTEGRITY_ENVELOPE_JSON,
-        envelope.to_canonical_bytes(),
-    ));
-
-    if let Err(e) = std::fs::create_dir_all(&a.out) {
-        eprintln!("cannot create output directory {}: {e}", a.out.display());
-        return ExitCode::from(2);
-    }
-    let stem = cl_bundle::bundle_file_name(case_id.as_str(), &root.to_hex())
-        .trim_end_matches(".clade")
-        .to_string();
-    let path = match cl_bundle::write_bundle_atomically(&a.out, &stem, &payloads) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("the bundle could not be written: {e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    let bundle_digest = std::fs::read(&path)
-        .map(|b| cl_core::hash::Digest::of(&b).to_hex())
-        .unwrap_or_else(|_| "(unreadable)".into());
-
-    // ---- summary --------------------------------------------------------
     println!("Cladeon Screen {}", cl_core::PRODUCT_VERSION);
     println!("case:     {case_id}");
-    println!("scanned:  {} files, {} bytes", result.inventory.files_enumerated, result.inventory.bytes_enumerated);
+    println!(
+        "scanned:  {} files, {} bytes",
+        result.inventory.files_enumerated, result.inventory.bytes_enumerated
+    );
     println!("coverage: {}", result.inventory.coverage_status);
     if result.redaction_ledger.is_empty() {
         println!("redacted: nothing");
@@ -439,78 +377,14 @@ fn run_scan(a: RunArgs) -> ExitCode {
         }
     }
     println!();
-    println!("bundle:   {}", path.display());
-    println!("sha256:   {bundle_digest}");
+    println!("bundle:   {}", sealed.path.display());
+    println!("sha256:   {}", sealed.sha256);
     println!();
     println!("Send that file unchanged. A screenshot, a Word conversion or a re-exported");
     println!("PDF is not the report: report.json inside the bundle is authoritative.");
     ExitCode::SUCCESS
 }
 
-fn markers_document(
-    canary: &cl_markers::Canary,
-    tag: &[u8; 16],
-    carrier: &cl_core::raster::Raster,
-) -> CanonValue {
-    let digits: String = canary.digits.iter().map(|d| char::from(b'0' + d.min(&9))).collect();
-    CanonValue::Obj(
-        Obj::new()
-            .with("schema_version", cl_core::SCHEMA_VERSION)
-            .with("marker_version", cl_core::MARKER_VERSION)
-            .with(
-                "numeric_canary",
-                CanonValue::Obj(
-                    Obj::new()
-                        .with("expected_digit_sequence", digits)
-                        .with("derivation", canary.derivation)
-                        .with(
-                            "note",
-                            "Non-analytical rendering-integrity digits. They never affect \
-                             a threshold or a conclusion.",
-                        ),
-                ),
-            )
-            .with(
-                "tint_marker",
-                CanonValue::Obj(
-                    Obj::new()
-                        .with("carrier", "footer_raster")
-                        .with("carrier_pages", "all")
-                        .with("carrier_width", carrier.width)
-                        .with("carrier_height", carrier.height)
-                        .with("expected_tag", cl_core::hex::encode(tag))
-                        .with("expected_carrier_sha256", carrier.digest())
-                        .with("ecc", "repetition_x7_majority")
-                        .with("detector", "normalised_correlation")
-                        .with(
-                            "detector_threshold_percent",
-                            cl_markers::DETECTOR_THRESHOLD_PERCENT,
-                        ),
-                ),
-            ),
-    )
-}
-
-fn verify_txt(case: &CaseId) -> String {
-    format!(
-        "Cladeon evidence bundle\n\
-         case: {case}\n\
-         \n\
-         report.json is the authoritative document. report.pdf is a rendering of it.\n\
-         A screenshot, a Word conversion or a re-exported PDF is not this report.\n\
-         \n\
-         To check this bundle:\n\
-         \n\
-             cl-verify check <this file>\n\
-         \n\
-         The verifier reports file integrity, challenge binding, marker status,\n\
-         coverage and evidence strength separately. A bundle can be intact and still\n\
-         inconclusive; those are different statements and it will make both.\n\
-         \n\
-         {}\n",
-        cl_core::REQUIRED_STATEMENT
-    )
-}
 
 #[cfg(test)]
 mod tests {
@@ -540,34 +414,5 @@ mod tests {
         assert!(d.inference_augmentation.is_empty());
     }
 
-    #[test]
-    fn verify_txt_names_the_authoritative_document_and_carries_the_statement() {
-        let t = verify_txt(&CaseId::parse("CL-2026-0F3A9C").unwrap());
-        assert!(t.contains("report.json is the authoritative document"));
-        assert!(t.contains("CL-2026-0F3A9C"));
-        assert!(t.contains("does not establish intent"));
-        assert!(t.is_ascii(), "VERIFY.txt must be plain ASCII with no active content");
-    }
 
-    #[test]
-    fn the_markers_document_records_what_a_verifier_needs() {
-        let ed = cl_core::hash::Digest::of(b"evidence");
-        let canary = cl_markers::derive_canary(&ed, "CL-2026-0F3A9C", "abcd", 6);
-        let tag = cl_markers::tint_tag(&ed, "CL-2026-0F3A9C", "abcd");
-        let carrier =
-            cl_markers::build_carrier(&tag, 240, 40, cl_markers::tint::RECOMMENDED_BASE);
-        let doc = markers_document(&canary, &tag, &carrier);
-        assert_eq!(
-            doc.get("tint_marker").and_then(|t| t.get("expected_tag")).and_then(|t| t.as_str()),
-            Some(cl_core::hex::encode(&tag).as_str())
-        );
-        // The note must say plainly that the digits are not analytical, so the
-        // report cannot be read as claiming false precision.
-        let note = doc
-            .get("numeric_canary")
-            .and_then(|c| c.get("note"))
-            .and_then(|n| n.as_str())
-            .unwrap();
-        assert!(note.contains("never affect"));
-    }
 }

@@ -1,0 +1,1020 @@
+//! Cladeon Screen — the window a vendor actually uses.
+//!
+//! This is the program a buyer e-mails out, so its whole design assumption is that
+//! the person opening it has never used a command line, did not choose to be
+//! audited, and is reasonably suspicious of a stranger's executable reading their
+//! files. Three consequences follow, and they shape every screen:
+//!
+//! 1. **It asks for nothing until it has explained itself.** The first screen says
+//!    what the program reads, what it never does, and that no network connection is
+//!    opened — before any folder picker appears.
+//! 2. **Nothing leaves the machine unseen.** The preflight screen lists what would
+//!    be sent *before* a single file is hashed, and the vendor can stop there.
+//! 3. **It never spawns anything.** The output location comes from a save dialog the
+//!    vendor drives, so they always know where the file went without the program
+//!    launching a file manager on their behalf.
+//!
+//! The case file is picked up automatically if it sits beside the executable, so the
+//! buyer can send one folder and the vendor only has to double-click.
+
+#![forbid(unsafe_code)]
+// A double-clicked application must not flash a console window behind it.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use cl_core::ids::CaseId;
+use cl_core::limits::Limits;
+use cl_core::redact::Redactor;
+use cl_core::vocab::{
+    CoverageStatus, Facet, InferenceAugmentation, ParameterUpdate, SupportBand, TrainingStage,
+    WeightOrigin,
+};
+use cl_facts::DeclaredFacets;
+use cl_screen::{scan, seal};
+use eframe::egui;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
+
+const STEPS: &[&str] =
+    &["What this is", "The claim", "Your folders", "Before we start", "Scanning", "Send it back"];
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Step {
+    Welcome = 0,
+    Claim = 1,
+    Folders = 2,
+    Preflight = 3,
+    Running = 4,
+    Done = 5,
+}
+
+/// A preflight summary: what is in scope, without having hashed anything.
+#[derive(Default, Clone)]
+struct Preflight {
+    by_type: Vec<(String, u64, u64)>,
+    total_files: u64,
+    total_bytes: u64,
+    opaque: u64,
+    unreadable: Vec<String>,
+}
+
+/// What the scan produced, reduced to what the window needs.
+///
+/// The full `ScanResult` is deliberately not carried into the UI: the window shows
+/// conclusions, and giving it the whole fact set would invite the UI to start
+/// interpreting evidence, which is the rules engine's job.
+struct Finished {
+    path: PathBuf,
+    sha256: String,
+    files: u64,
+    bytes: u64,
+    coverage: CoverageStatus,
+    facets: Vec<(Facet, SupportBand, bool)>,
+    redactions: Vec<(String, u64)>,
+    limitation_count: usize,
+}
+
+enum Msg {
+    Preflight(Result<Preflight, String>),
+    Progress(scan::Progress),
+    Finished(Box<Result<Finished, String>>),
+}
+
+struct App {
+    step: Step,
+    // case
+    challenge: Option<cl_case::Challenge>,
+    challenge_bytes: Option<Vec<u8>>,
+    challenge_sig: Option<Vec<u8>>,
+    case_id: String,
+    vendor: String,
+    claim: String,
+    // declaration
+    origin: Option<WeightOrigin>,
+    update: Option<ParameterUpdate>,
+    stage: Option<TrainingStage>,
+    augmentation: Vec<InferenceAugmentation>,
+    // selection
+    roots: Vec<PathBuf>,
+    excluded: Vec<PathBuf>,
+    // work
+    rx: Option<Receiver<Msg>>,
+    cancel: Arc<AtomicBool>,
+    preflight: Option<Preflight>,
+    preflight_running: bool,
+    progress: scan::Progress,
+    finished: Option<Finished>,
+    error: Option<String>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        App {
+            step: Step::Welcome,
+            challenge: None,
+            challenge_bytes: None,
+            challenge_sig: None,
+            case_id: String::new(),
+            vendor: String::new(),
+            claim: String::new(),
+            origin: None,
+            update: None,
+            stage: None,
+            augmentation: Vec::new(),
+            roots: Vec::new(),
+            excluded: Vec::new(),
+            rx: None,
+            cancel: Arc::new(AtomicBool::new(false)),
+            preflight: None,
+            preflight_running: false,
+            progress: scan::Progress::default(),
+            finished: None,
+            error: None,
+        }
+    }
+}
+
+/// Look beside the executable for the case file the buyer sent.
+///
+/// The buyer ships one folder containing this program and the case file, so the
+/// vendor never has to know what a "challenge" is or go looking for it.
+fn find_challenge_beside_exe() -> Option<(cl_case::Challenge, Vec<u8>, Option<Vec<u8>>)> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    find_challenge_in(&dir)
+}
+
+/// The searchable half, split out so it can be tested.
+///
+/// If this quietly stops working the vendor simply sees "no request file found",
+/// shrugs, and the audit is untraceable to the buyer's question — a silent failure
+/// with no error anywhere. That is exactly the kind of thing that needs a test.
+fn find_challenge_in(dir: &Path) -> Option<(cl_case::Challenge, Vec<u8>, Option<Vec<u8>>)> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = e.path();
+        let name = p.file_name()?.to_string_lossy().to_ascii_lowercase();
+        if name == "challenge.json" || name.ends_with(".case") || name.ends_with(".challenge") {
+            candidates.push(p);
+        }
+    }
+    candidates.sort();
+    for c in candidates {
+        let Ok(bytes) = std::fs::read(&c) else { continue };
+        if let Ok(ch) = cl_case::Challenge::parse(&bytes) {
+            let sig = std::fs::read(c.with_extension("sig")).ok();
+            return Some((ch, bytes, sig));
+        }
+    }
+    None
+}
+
+impl App {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cl_ui::apply_theme(&cc.egui_ctx);
+        let mut app = App::default();
+        if let Some((ch, bytes, sig)) = find_challenge_beside_exe() {
+            app.case_id = ch.case_id.as_str().to_string();
+            app.vendor = ch.vendor_label.clone();
+            app.claim = ch.exact_claim_text.clone();
+            app.challenge = Some(ch);
+            app.challenge_bytes = Some(bytes);
+            app.challenge_sig = sig;
+        }
+        app
+    }
+
+    fn request(&self) -> Option<scan::ScanRequest> {
+        let case_id = CaseId::parse(&self.case_id).ok()?;
+        Some(scan::ScanRequest {
+            roots: self.roots.clone(),
+            excluded: self.excluded.clone(),
+            case_id,
+            vendor_label: self.vendor.clone(),
+            exact_claim_text: self.claim.clone(),
+            declared: DeclaredFacets {
+                weight_origin: self.origin,
+                parameter_update: self.update,
+                training_stage: self.stage,
+                inference_augmentation: self.augmentation.clone(),
+            },
+            hash_files: true,
+            limits: Limits::default(),
+            challenge_bytes: self.challenge_bytes.clone(),
+        })
+    }
+
+    fn start_preflight(&mut self, ctx: &egui::Context) {
+        let roots = self.roots.clone();
+        let excluded = self.excluded.clone();
+        let (tx, rx) = channel();
+        self.rx = Some(rx);
+        self.preflight_running = true;
+        self.preflight = None;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let mut redactor = Redactor::new();
+            let opts = cl_inventory::ScanOptions {
+                limits: Limits::default(),
+                // A preflight looks; it does not read. Nothing is hashed here.
+                hash_files: false,
+                excluded,
+                head_bytes: cl_formats::detect::CLASSIFY_HEAD_BYTES,
+            };
+            let out = cl_inventory::scan(
+                &roots,
+                &mut redactor,
+                &opts,
+                &|p, h| cl_formats::detect::classify(p, h),
+                &|| false,
+                &mut |_| {},
+            );
+            let msg = match out {
+                Err(e) => Err(format!("{e}")),
+                Ok(inv) => {
+                    let mut by: BTreeMap<&str, (u64, u64)> = BTreeMap::new();
+                    for a in &inv.artifacts {
+                        let e = by.entry(a.artifact_type.as_str()).or_insert((0, 0));
+                        e.0 += 1;
+                        e.1 = e.1.saturating_add(a.size_bytes);
+                    }
+                    Ok(Preflight {
+                        by_type: by.into_iter().map(|(k, v)| (k.to_string(), v.0, v.1)).collect(),
+                        total_files: inv.files_enumerated,
+                        total_bytes: inv.bytes_enumerated,
+                        opaque: inv
+                            .artifacts
+                            .iter()
+                            .filter(|a| {
+                                a.artifact_type == cl_facts::ArtifactType::OpaqueSerialization
+                            })
+                            .count() as u64,
+                        unreadable: inv
+                            .coverage
+                            .iter()
+                            .take(12)
+                            .map(|c| format!("{} — {}", c.path_alias, c.detail))
+                            .collect(),
+                    })
+                }
+            };
+            let _ = tx.send(Msg::Preflight(msg));
+            ctx.request_repaint();
+        });
+    }
+
+    fn start_scan(&mut self, ctx: &egui::Context, out_dir: PathBuf) {
+        let Some(req) = self.request() else {
+            self.error = Some("The case identifier is not valid.".into());
+            return;
+        };
+        let nonce =
+            self.challenge.as_ref().map(|c| c.nonce.as_str().to_string()).unwrap_or_default();
+        let sig = self.challenge_sig.clone();
+        let (tx, rx) = channel();
+        self.rx = Some(rx);
+        self.cancel = Arc::new(AtomicBool::new(false));
+        let cancel = self.cancel.clone();
+        self.progress = scan::Progress::default();
+        self.step = Step::Running;
+        let ctx = ctx.clone();
+        let tx_progress = tx.clone();
+        let ctx_progress = ctx.clone();
+
+        std::thread::spawn(move || {
+            let flag = cancel.clone();
+            let out = seal::scan_and_seal(
+                &req,
+                &out_dir,
+                &nonce,
+                sig,
+                &|| flag.load(Ordering::Relaxed),
+                &mut |p| {
+                    let _ = tx_progress.send(Msg::Progress(p));
+                    ctx_progress.request_repaint();
+                },
+            );
+            let msg = match out {
+                Err(e) => Err(format!("{e}")),
+                Ok(sealed) => {
+                    let r = &sealed.result;
+                    Ok(Finished {
+                        path: sealed.path.clone(),
+                        sha256: sealed.sha256.clone(),
+                        files: r.inventory.files_enumerated,
+                        bytes: r.inventory.bytes_enumerated,
+                        coverage: r.inventory.coverage_status,
+                        facets: Facet::ALL
+                            .iter()
+                            .filter_map(|f| {
+                                r.rules
+                                    .conclusion(*f)
+                                    .map(|c| (*f, c.band, c.method_label_emitted))
+                            })
+                            .collect(),
+                        redactions: r
+                            .redaction_ledger
+                            .iter()
+                            .map(|e| (e.kind.to_string(), e.count))
+                            .collect(),
+                        limitation_count: r.rules.limitations().len(),
+                    })
+                }
+            };
+            let _ = tx.send(Msg::Finished(Box::new(msg)));
+            ctx.request_repaint();
+        });
+    }
+
+    fn pump(&mut self) {
+        let Some(rx) = &self.rx else { return };
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                Msg::Preflight(Ok(p)) => {
+                    self.preflight = Some(p);
+                    self.preflight_running = false;
+                }
+                Msg::Preflight(Err(e)) => {
+                    self.error = Some(e);
+                    self.preflight_running = false;
+                }
+                Msg::Progress(p) => self.progress = p,
+                Msg::Finished(r) => match *r {
+                    Ok(f) => {
+                        self.finished = Some(f);
+                        self.step = Step::Done;
+                    }
+                    Err(e) => {
+                        self.error = Some(e);
+                        self.step = Step::Preflight;
+                    }
+                },
+            }
+        }
+    }
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.pump();
+
+        egui::SidePanel::left("rail").exact_width(210.0).show(ctx, |ui| {
+            ui.add_space(18.0);
+            cl_ui::h2(ui, "Cladeon Screen");
+            cl_ui::muted(ui, cl_core::PRODUCT_VERSION);
+            ui.add_space(18.0);
+            cl_ui::step_rail(ui, STEPS, self.step as usize);
+            ui.add_space(18.0);
+            ui.separator();
+            cl_ui::muted(ui, "No internet connection is used.\nYour files are never run.");
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.add_space(14.0);
+                if let Some(e) = self.error.clone() {
+                    cl_ui::callout(ui, cl_ui::colour::CONFLICT, "Something went wrong", &e);
+                    ui.add_space(8.0);
+                    if cl_ui::secondary_button(ui, "Dismiss") {
+                        self.error = None;
+                    }
+                    ui.add_space(12.0);
+                }
+                match self.step {
+                    Step::Welcome => self.welcome(ui),
+                    Step::Claim => self.claim_screen(ui),
+                    Step::Folders => self.folders(ui),
+                    Step::Preflight => self.preflight_screen(ui, ctx),
+                    Step::Running => self.running(ui),
+                    Step::Done => self.done(ui),
+                }
+                ui.add_space(20.0);
+                cl_ui::required_statement(ui);
+            });
+        });
+    }
+}
+
+impl App {
+    fn welcome(&mut self, ui: &mut egui::Ui) {
+        cl_ui::h1(ui, "Someone has asked how your AI system was built");
+        ui.add_space(8.0);
+        cl_ui::body(
+            ui,
+            "This program looks at folders you choose and writes a single file describing \
+             what it found. You send that file back. It takes a few minutes.",
+        );
+        ui.add_space(14.0);
+
+        cl_ui::h2(ui, "What it does");
+        cl_ui::body(ui, "•  Reads only the folders you pick, and only to look at them.");
+        cl_ui::body(ui, "•  Records file names, sizes and checksums, plus settings from configuration files.");
+        cl_ui::body(ui, "•  Shows you everything that would leave this machine, before it leaves.");
+
+        ui.add_space(10.0);
+        cl_ui::h2(ui, "What it never does");
+        cl_ui::body(ui, "•  It does not open a network connection. Nothing is uploaded.");
+        cl_ui::body(ui, "•  It does not run, open or load your model files.");
+        cl_ui::body(ui, "•  It does not copy your weights, your data, your code or your prompts.");
+        cl_ui::body(ui, "•  It removes passwords, API keys and your Windows user name automatically.");
+
+        ui.add_space(16.0);
+        match &self.challenge {
+            Some(c) => cl_ui::callout(
+                ui,
+                cl_ui::colour::ACCENT,
+                "A request was found next to this program",
+                &format!(
+                    "Case {} from the organisation that sent this to you. The exact question \
+                     they asked is on the next screen.",
+                    c.case_id
+                ),
+            ),
+            None => cl_ui::callout(
+                ui,
+                cl_ui::colour::ATTENTION,
+                "No request file found",
+                "This program was sent without its case file. You can still run a scan, but \
+                 the result will not be tied to anyone's request. Ask whoever sent this for \
+                 the whole folder they meant to send.",
+            ),
+        }
+
+        ui.add_space(18.0);
+        if cl_ui::primary_button(ui, "Continue", true) {
+            self.step = Step::Claim;
+        }
+    }
+
+    fn claim_screen(&mut self, ui: &mut egui::Ui) {
+        cl_ui::h1(ui, "The statement being checked");
+        ui.add_space(8.0);
+
+        if self.challenge.is_some() {
+            cl_ui::field(ui, "Requested by", &self.vendor);
+            cl_ui::field(ui, "Case", &self.case_id);
+            ui.add_space(10.0);
+            cl_ui::h2(ui, "They asked about this claim");
+            egui::Frame::NONE
+                .fill(egui::Color32::from_rgb(0xf2, 0xf3, 0xf5))
+                .inner_margin(egui::Margin::same(12))
+                .corner_radius(4.0)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new(&self.claim).size(15.0).italics());
+                });
+        } else {
+            cl_ui::body(ui, "Fill these in with whoever asked you for this.");
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label("Case reference");
+                ui.text_edit_singleline(&mut self.case_id);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Your organisation");
+                ui.text_edit_singleline(&mut self.vendor);
+            });
+            ui.label("The claim being checked");
+            ui.text_edit_multiline(&mut self.claim);
+        }
+
+        ui.add_space(16.0);
+        cl_ui::h2(ui, "How would you describe your system?");
+        cl_ui::muted(
+            ui,
+            "Answer as best you can. Leaving something blank is fine and is not held against you.",
+        );
+        ui.add_space(8.0);
+
+        combo(ui, "Where the weights came from", &mut self.origin, WeightOrigin::ALL, |v| {
+            match v {
+                WeightOrigin::RandomInitializationClaimed => "We trained from scratch",
+                WeightOrigin::DerivativeOfDisclosedBase => "We started from an existing model",
+                WeightOrigin::DistilledFromTeacher => "We distilled it from a larger model",
+                WeightOrigin::Unknown => "Not sure",
+            }
+        });
+        combo(ui, "How the weights changed", &mut self.update, ParameterUpdate::ALL, |v| match v {
+            ParameterUpdate::NoUpdateObserved => "We did not change any weights",
+            ParameterUpdate::UnmergedPeftObserved => "We used an adapter (LoRA or similar)",
+            ParameterUpdate::MergedAdapterConsistent => "We used an adapter and merged it in",
+            ParameterUpdate::PartialOrDenseUpdate => "We fine-tuned the weights directly",
+            ParameterUpdate::Unknown => "Not sure",
+        });
+        combo(ui, "What kind of training", &mut self.stage, TrainingStage::ALL, |v| match v {
+            TrainingStage::ContinuedPretraining => "More pre-training on our own text",
+            TrainingStage::SupervisedInstructionTuning => "Instruction / supervised fine-tuning",
+            TrainingStage::PreferenceTuning => "Preference tuning (RLHF, DPO)",
+            TrainingStage::Distillation => "Distillation from a teacher model",
+            TrainingStage::OtherOrUnknown => "Something else, or not sure",
+        });
+
+        ui.add_space(8.0);
+        ui.label("What else runs when the system answers a question?");
+        for v in InferenceAugmentation::ALL {
+            let mut on = self.augmentation.contains(v);
+            let label = match v {
+                InferenceAugmentation::Rag => "It looks things up in a document store (RAG)",
+                InferenceAugmentation::ExternalApiRouter => "It calls an outside AI service",
+                InferenceAugmentation::ToolsPromptOrchestration => "It uses tools or prompt chaining",
+                InferenceAugmentation::LocalDirectInference => "It just runs our own model directly",
+                InferenceAugmentation::NoneObservedOrUnknown => "Not sure",
+            };
+            if ui.checkbox(&mut on, label).changed() {
+                if on {
+                    self.augmentation.push(*v);
+                } else {
+                    self.augmentation.retain(|x| x != v);
+                }
+            }
+        }
+
+        ui.add_space(18.0);
+        ui.horizontal(|ui| {
+            if cl_ui::secondary_button(ui, "Back") {
+                self.step = Step::Welcome;
+            }
+            let ok = CaseId::parse(&self.case_id).is_ok();
+            if cl_ui::primary_button(ui, "Continue", ok) {
+                self.step = Step::Folders;
+            }
+            if !ok {
+                ui.label(
+                    egui::RichText::new("A case reference like CL-2026-0F3A9C is needed")
+                        .size(12.0)
+                        .color(cl_ui::colour::MUTED),
+                );
+            }
+        });
+    }
+
+    fn folders(&mut self, ui: &mut egui::Ui) {
+        cl_ui::h1(ui, "Choose what to show");
+        ui.add_space(8.0);
+        cl_ui::body(
+            ui,
+            "Pick the folders holding your model and its training records. Nothing outside \
+             these folders is looked at.",
+        );
+        ui.add_space(12.0);
+
+        if cl_ui::secondary_button(ui, "Add a folder…") {
+            if let Some(d) = rfd::FileDialog::new().pick_folder() {
+                if !self.roots.contains(&d) {
+                    self.roots.push(d);
+                    self.preflight = None;
+                }
+            }
+        }
+        ui.add_space(8.0);
+
+        let mut remove: Option<usize> = None;
+        for (i, r) in self.roots.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(i);
+                }
+                ui.label(egui::RichText::new(r.display().to_string()).size(13.0));
+            });
+        }
+        if let Some(i) = remove {
+            self.roots.remove(i);
+            self.preflight = None;
+        }
+
+        if self.roots.is_empty() {
+            ui.add_space(6.0);
+            cl_ui::muted(ui, "No folders chosen yet.");
+        }
+
+        ui.add_space(16.0);
+        cl_ui::h2(ui, "Leave something out (optional)");
+        cl_ui::muted(
+            ui,
+            "Anything you exclude is recorded in the report as excluded by you. It is not \
+             hidden, but its contents are never read.",
+        );
+        if cl_ui::secondary_button(ui, "Exclude a folder…") {
+            if let Some(d) = rfd::FileDialog::new().pick_folder() {
+                if !self.excluded.contains(&d) {
+                    self.excluded.push(d);
+                    self.preflight = None;
+                }
+            }
+        }
+        let mut rm: Option<usize> = None;
+        for (i, r) in self.excluded.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.small_button("Remove").clicked() {
+                    rm = Some(i);
+                }
+                ui.label(
+                    egui::RichText::new(r.display().to_string())
+                        .size(13.0)
+                        .color(cl_ui::colour::MUTED),
+                );
+            });
+        }
+        if let Some(i) = rm {
+            self.excluded.remove(i);
+        }
+
+        ui.add_space(18.0);
+        ui.horizontal(|ui| {
+            if cl_ui::secondary_button(ui, "Back") {
+                self.step = Step::Claim;
+            }
+            if cl_ui::primary_button(ui, "Continue", !self.roots.is_empty()) {
+                self.step = Step::Preflight;
+            }
+        });
+    }
+
+    fn preflight_screen(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        cl_ui::h1(ui, "Before anything is read");
+        ui.add_space(8.0);
+
+        if self.preflight.is_none() && !self.preflight_running {
+            self.start_preflight(ctx);
+        }
+        if self.preflight_running {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Looking at what is there. Nothing has been read yet.");
+            });
+            return;
+        }
+
+        if let Some(p) = self.preflight.clone() {
+            cl_ui::body(
+                ui,
+                "This is everything found in the folders you chose. No file has been read and \
+                 nothing has been written.",
+            );
+            ui.add_space(12.0);
+
+            egui::Grid::new("scope").num_columns(3).striped(true).spacing([24.0, 6.0]).show(
+                ui,
+                |ui| {
+                    ui.label(egui::RichText::new("Kind of file").strong());
+                    ui.label(egui::RichText::new("Count").strong());
+                    ui.label(egui::RichText::new("Size").strong());
+                    ui.end_row();
+                    for (t, n, b) in &p.by_type {
+                        ui.label(friendly_type(t));
+                        ui.label(n.to_string());
+                        ui.label(cl_ui::bytes_human(*b));
+                        ui.end_row();
+                    }
+                    ui.label(egui::RichText::new("Total").strong());
+                    ui.label(egui::RichText::new(p.total_files.to_string()).strong());
+                    ui.label(egui::RichText::new(cl_ui::bytes_human(p.total_bytes)).strong());
+                    ui.end_row();
+                },
+            );
+
+            if p.opaque > 0 {
+                ui.add_space(12.0);
+                cl_ui::callout(
+                    ui,
+                    cl_ui::colour::NEUTRAL,
+                    &format!("{} file(s) will be counted but never opened", p.opaque),
+                    "These are formats that can run code when loaded. Cladeon records their \
+                     name, size and checksum and never reads inside them.",
+                );
+            }
+
+            ui.add_space(14.0);
+            cl_ui::h2(ui, "What will be in the file you send back");
+            cl_ui::body(ui, "•  Folder and file names, shortened so your real paths are hidden.");
+            cl_ui::body(ui, "•  File sizes and checksums.");
+            cl_ui::body(ui, "•  Settings read from configuration files, such as a model's size.");
+            cl_ui::body(ui, "•  The conclusions drawn from those.");
+
+            ui.add_space(10.0);
+            cl_ui::h2(ui, "What will not be");
+            cl_ui::body(ui, "•  Your model weights, training data, source code and prompts.");
+            cl_ui::body(ui, "•  Any password, key or token — removed before it reaches the file.");
+            cl_ui::body(ui, "•  Your Windows user name and any full path from this computer.");
+
+            if !p.unreadable.is_empty() {
+                ui.add_space(12.0);
+                cl_ui::h2(ui, "Things this scan will not be able to see");
+                for u in &p.unreadable {
+                    cl_ui::muted(ui, u);
+                }
+            }
+
+            ui.add_space(18.0);
+            ui.horizontal(|ui| {
+                if cl_ui::secondary_button(ui, "Back") {
+                    self.step = Step::Folders;
+                }
+                if cl_ui::primary_button(ui, "Scan and create the file", true) {
+                    let name = format!("{}.clade", self.case_id);
+                    if let Some(f) = rfd::FileDialog::new()
+                        .set_file_name(&name)
+                        .add_filter("Cladeon evidence bundle", &["clade"])
+                        .save_file()
+                    {
+                        let dir = f.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+                        self.start_scan(ctx, dir);
+                    }
+                }
+            });
+        }
+    }
+
+    fn running(&mut self, ui: &mut egui::Ui) {
+        cl_ui::h1(ui, "Scanning");
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(egui::RichText::new(self.progress.phase.label()).size(15.0));
+        });
+        ui.add_space(12.0);
+        cl_ui::field(ui, "Files seen", &self.progress.files_seen.to_string());
+        cl_ui::field(ui, "Data examined", &cl_ui::bytes_human(self.progress.bytes_seen));
+        cl_ui::field(ui, "Data checksummed", &cl_ui::bytes_human(self.progress.bytes_hashed));
+        ui.add_space(16.0);
+        cl_ui::muted(
+            ui,
+            "Counts are of real work done, not an estimate. Large model files take the longest.",
+        );
+        ui.add_space(16.0);
+        if cl_ui::secondary_button(ui, "Stop") {
+            self.cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn done(&mut self, ui: &mut egui::Ui) {
+        let Some(f) = &self.finished else { return };
+        cl_ui::h1(ui, "Done — now send the file back");
+        ui.add_space(10.0);
+
+        cl_ui::callout(
+            ui,
+            cl_ui::colour::ACCENT,
+            "Your file is saved here",
+            &f.path.display().to_string(),
+        );
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            if cl_ui::secondary_button(ui, "Copy location") {
+                ui.ctx().copy_text(f.path.display().to_string());
+            }
+            if cl_ui::secondary_button(ui, "Copy checksum") {
+                ui.ctx().copy_text(f.sha256.clone());
+            }
+        });
+
+        ui.add_space(14.0);
+        cl_ui::body(ui, "Attach that one file to your reply. Do not rename it, open it and save \
+                         it again, or send a screenshot — any of those breaks the checks it carries.");
+
+        ui.add_space(16.0);
+        cl_ui::h2(ui, "What was looked at");
+        cl_ui::field(ui, "Files", &f.files.to_string());
+        cl_ui::field(ui, "Data", &cl_ui::bytes_human(f.bytes));
+        cl_ui::field(ui, "Coverage", f.coverage.as_str());
+        if f.redactions.is_empty() {
+            cl_ui::field(ui, "Removed before sending", "nothing needed removing");
+        } else {
+            let total: u64 = f.redactions.iter().map(|(_, n)| n).sum();
+            cl_ui::field(ui, "Removed before sending", &format!("{total} value(s)"));
+            for (kind, n) in &f.redactions {
+                cl_ui::muted(ui, &format!("    {kind}: {n}"));
+            }
+        }
+
+        ui.add_space(16.0);
+        cl_ui::h2(ui, "What it says about your system");
+        for (facet, band, named) in &f.facets {
+            ui.horizontal(|ui| {
+                cl_ui::badge(ui, band.render(), cl_ui::band_colour(*band));
+                ui.label(egui::RichText::new(cl_ui::facet_title(*facet)).size(14.0));
+            });
+            cl_ui::muted(ui, cl_ui::band_plain_english(*band));
+            let _ = named;
+            ui.add_space(4.0);
+        }
+
+        if f.limitation_count > 0 {
+            ui.add_space(6.0);
+            cl_ui::muted(
+                ui,
+                &format!(
+                    "The report also records {} thing(s) this scan was not able to see. Those                      are limitations of the scan, not findings about you.",
+                    f.limitation_count
+                ),
+            );
+        }
+
+        ui.add_space(12.0);
+        cl_ui::callout(
+            ui,
+            cl_ui::colour::NEUTRAL,
+            "If it says there was not enough evidence",
+            "That is not an accusation. It means the files needed to answer that question \
+             were not in the folders you picked. You can go back, add more folders, and run \
+             it again.",
+        );
+
+        ui.add_space(16.0);
+        if cl_ui::secondary_button(ui, "Scan again") {
+            self.finished = None;
+            self.preflight = None;
+            self.step = Step::Folders;
+        }
+    }
+}
+
+/// A labelled dropdown over a `str_enum`, with vendor-facing wording.
+fn combo<T: PartialEq + Copy + 'static>(
+    ui: &mut egui::Ui,
+    label: &str,
+    slot: &mut Option<T>,
+    all: &'static [T],
+    text: fn(&T) -> &'static str,
+) {
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(240.0, 20.0),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.label(egui::RichText::new(label).size(13.5));
+            },
+        );
+        let current = slot.map(|v| text(&v)).unwrap_or("Prefer not to say");
+        egui::ComboBox::from_id_salt(label).selected_text(current).width(320.0).show_ui(
+            ui,
+            |ui| {
+                ui.selectable_value(slot, None, "Prefer not to say");
+                for v in all {
+                    let mut sel = *slot == Some(*v);
+                    if ui.selectable_label(sel, text(v)).clicked() {
+                        sel = true;
+                        *slot = Some(*v);
+                    }
+                    let _ = sel;
+                }
+            },
+        );
+    });
+}
+
+/// Artifact type names are precise and unfriendly; this is the vendor-facing gloss.
+fn friendly_type(t: &str) -> &str {
+    match t {
+        "safetensors" => "Model weights (SafeTensors)",
+        "gguf" => "Model weights (GGUF)",
+        "onnx" => "Model (ONNX)",
+        "opaque_serialization" => "Checkpoint — counted, never opened",
+        "shard_index" => "Weight file index",
+        "peft_adapter_config" => "Adapter settings",
+        "transformers_config" => "Model settings",
+        "tokenizer_config" => "Tokenizer settings",
+        "trainer_state" => "Training history",
+        "training_args" => "Training settings",
+        "training_log" => "Training log",
+        "dependency_lockfile" => "Software dependency list",
+        "deployment_manifest" => "Deployment settings",
+        "serving_config" => "Serving settings",
+        "vector_index" => "Document search index",
+        "retrieval_trace" => "Retrieval records",
+        "model_card" => "Model description",
+        "generic_json" | "generic_yaml" | "generic_toml" => "Other settings file",
+        "plain_text" => "Text file",
+        other => other,
+    }
+}
+
+fn main() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([980.0, 760.0])
+            .with_min_inner_size([820.0, 600.0])
+            .with_title("Cladeon Screen"),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Cladeon Screen",
+        options,
+        Box::new(|cc| Ok(Box::new(App::new(cc)))),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn friendly_names_replace_the_machine_vocabulary() {
+        // A vendor should never be shown "opaque_serialization".
+        assert_eq!(friendly_type("safetensors"), "Model weights (SafeTensors)");
+        assert!(friendly_type("opaque_serialization").contains("never opened"));
+        // Anything unmapped falls through rather than being hidden.
+        assert_eq!(friendly_type("something_new"), "something_new");
+    }
+
+    #[test]
+    fn every_artifact_type_the_scanner_emits_has_a_gloss_or_falls_through() {
+        for t in cl_facts::ArtifactType::ALL {
+            let g = friendly_type(t.as_str());
+            assert!(!g.is_empty(), "{t} rendered empty");
+        }
+    }
+
+    #[test]
+    fn a_request_needs_a_valid_case_id() {
+        let mut app = App::default();
+        app.roots.push(PathBuf::from("."));
+        assert!(app.request().is_none(), "an empty case id must not build a request");
+        app.case_id = "CL-2026-0F3A9C".into();
+        assert!(app.request().is_some());
+    }
+
+    #[test]
+    fn declared_facets_flow_into_the_request() {
+        let mut app = App::default();
+        app.case_id = "CL-2026-0F3A9C".into();
+        app.update = Some(ParameterUpdate::UnmergedPeftObserved);
+        app.augmentation.push(InferenceAugmentation::Rag);
+        let r = app.request().unwrap();
+        assert_eq!(r.declared.parameter_update, Some(ParameterUpdate::UnmergedPeftObserved));
+        assert_eq!(r.declared.inference_augmentation, vec![InferenceAugmentation::Rag]);
+    }
+
+    fn temp_kit(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir()
+            .join(format!("cl-kit-{}-{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn a_challenge() -> (cl_case::Challenge, Vec<u8>) {
+        let c = cl_case::Challenge::new(
+            CaseId::parse("CL-2026-0F3A9C").unwrap(),
+            cl_core::ids::Nonce::parse(&"a1".repeat(16)).unwrap(),
+            "Acme Analytics Ltd",
+            "We trained our own model from scratch.",
+            cl_core::time::Timestamp::parse_rfc3339("2026-09-02T13:00:00Z").unwrap(),
+            14,
+            vec![],
+            None,
+        );
+        let b = c.to_canonical_bytes().unwrap();
+        (c, b)
+    }
+
+    #[test]
+    fn the_case_file_is_found_beside_the_program() {
+        // The buyer ships one folder; the vendor double-clicks. If this stops
+        // working they see "no request found" and the audit silently detaches from
+        // the question that was asked.
+        let (_, bytes) = a_challenge();
+        for name in ["challenge.json", "acme.case", "request.challenge"] {
+            let d = temp_kit(name);
+            std::fs::write(d.join(name), &bytes).unwrap();
+            let found = find_challenge_in(&d);
+            assert!(found.is_some(), "a case named {name} was not picked up");
+            let (ch, _, _) = found.unwrap();
+            assert_eq!(ch.case_id.as_str(), "CL-2026-0F3A9C");
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    #[test]
+    fn a_signature_beside_the_case_is_picked_up_too() {
+        let (_, bytes) = a_challenge();
+        let d = temp_kit("sig");
+        std::fs::write(d.join("challenge.json"), &bytes).unwrap();
+        std::fs::write(d.join("challenge.sig"), "ab".repeat(64)).unwrap();
+        let (_, _, sig) = find_challenge_in(&d).expect("case found");
+        assert!(sig.is_some(), "the detached signature was not collected");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_unrelated_folder_yields_nothing_rather_than_guessing() {
+        let d = temp_kit("empty");
+        std::fs::write(d.join("notes.txt"), b"hello").unwrap();
+        std::fs::write(d.join("data.json"), b"{}").unwrap();
+        assert!(find_challenge_in(&d).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_corrupt_case_file_is_ignored_not_half_loaded() {
+        let d = temp_kit("corrupt");
+        std::fs::write(d.join("challenge.json"), b"{not a challenge}").unwrap();
+        assert!(find_challenge_in(&d).is_none(), "a broken case must not load partially");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_step_rail_matches_the_step_enum() {
+        assert_eq!(STEPS.len(), Step::Done as usize + 1);
+    }
+}

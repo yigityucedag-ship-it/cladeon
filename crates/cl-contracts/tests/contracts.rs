@@ -140,35 +140,60 @@ fn without_test_modules(src: &str) -> String {
 // Dependency policy
 // ---------------------------------------------------------------------------
 
-/// The only third-party crates permitted anywhere in the workspace.
+/// Third-party crates permitted in every crate.
 ///
-/// The promise: no third-party crate parses bytes that came from a vendor artifact
-/// or a `.clade`. Every such parser is in-repo and bounded. Breaking this silently
-/// re-introduces an unaudited attack surface into a tool whose entire job is to read
-/// files supplied by a party with a motive.
-const ALLOWED_DEPENDENCIES: &[&str] = &[
-    // The only third-party crates in the workspace.
-    "sha2",
-    "ed25519-dalek",
-    "getrandom",
-    "clap",
-    // In-repo crates. Listed explicitly so that adding a new one is a deliberate act
-    // rather than something a `path = ` dependency can do quietly.
+/// The promise this protects: **no third-party crate parses bytes that came from a
+/// vendor artifact or a `.clade` bundle.** Every such parser is in-repo and bounded.
+/// Breaking it silently re-introduces an unaudited attack surface into a tool whose
+/// entire job is reading files supplied by a party with a motive.
+const BASE_DEPENDENCIES: &[&str] =
+    &["sha2", "ed25519-dalek", "getrandom"];
+
+/// Extra dependencies allowed in named crates, and nowhere else.
+///
+/// This is a per-crate list rather than one global one, because the boundary that
+/// matters is not "how many dependencies" but "which code touches hostile bytes". A
+/// GUI toolkit renders pixels; it never sees an artifact. Keeping the allowance
+/// scoped means `cl-formats` and `cl-core` cannot quietly acquire a parser through
+/// a shared list, which a single global allow-list would have permitted.
+const CRATE_DEPENDENCIES: &[(&str, &[&str])] = &[
+    ("cl-screen", &["clap"]),
+    ("cl-verify", &["clap"]),
+    ("cl-fixtures", &["clap"]),
+    ("cl-ui", &["eframe", "egui"]),
+    ("cl-screen-gui", &["eframe", "egui", "rfd"]),
+    ("cl-auditor-gui", &["eframe", "egui", "rfd"]),
+];
+
+/// Crates that read untrusted input. These may never gain a dependency beyond
+/// [`BASE_DEPENDENCIES`], whatever the per-crate table says.
+const HOSTILE_INPUT_CRATES: &[&str] = &[
     "cl-core",
     "cl-facts",
-    "cl-inventory",
     "cl-formats",
-    "cl-rules",
-    "cl-markers",
-    "cl-report",
+    "cl-inventory",
     "cl-bundle",
-    "cl-case",
-    "cl-fixtures",
+    "cl-rules",
 ];
+
+fn in_repo_crate(name: &str) -> bool {
+    name.starts_with("cl-")
+}
 
 #[test]
 fn no_dependency_outside_the_allow_list() {
     for manifest in cargo_manifests() {
+        let crate_name = manifest
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let extra: &[&str] = CRATE_DEPENDENCIES
+            .iter()
+            .find(|(n, _)| *n == crate_name)
+            .map(|(_, d)| *d)
+            .unwrap_or(&[]);
+
         let text = read(&manifest);
         let mut in_deps = false;
         for line in text.lines() {
@@ -187,12 +212,77 @@ fn no_dependency_outside_the_allow_list() {
             if name.is_empty() {
                 continue;
             }
+            // The workspace manifest declares the union; per-crate manifests are
+            // where the boundary is actually enforced.
+            let is_workspace_root = manifest.parent() == Some(repo_root().as_path());
+            let allowed = in_repo_crate(name)
+                || BASE_DEPENDENCIES.contains(&name)
+                || extra.contains(&name)
+                || (is_workspace_root
+                    && CRATE_DEPENDENCIES.iter().any(|(_, d)| d.contains(&name)));
             assert!(
-                ALLOWED_DEPENDENCIES.contains(&name),
-                "{} declares `{name}`, which is outside the dependency allow-list. \
-                 No third-party crate may parse untrusted bytes; add an in-repo bounded \
-                 parser instead, or extend ALLOWED_DEPENDENCIES deliberately.",
+                allowed,
+                "{} declares `{name}`, which is not permitted for crate `{crate_name}`.                  No third-party crate may parse untrusted bytes; add an in-repo bounded                  parser, or extend CRATE_DEPENDENCIES deliberately for this crate alone.",
                 manifest.display()
+            );
+        }
+    }
+}
+
+/// The crates that read hostile input keep the smallest possible surface, whatever
+/// the per-crate table allows elsewhere.
+#[test]
+fn crates_that_read_hostile_input_have_no_extra_dependencies() {
+    for name in HOSTILE_INPUT_CRATES {
+        let manifest = repo_root().join("crates").join(name).join("Cargo.toml");
+        assert!(manifest.is_file(), "{name} has no manifest");
+        let text = read(&manifest);
+        let mut in_deps = false;
+        for line in text.lines() {
+            let t = line.trim();
+            if t.starts_with('[') {
+                in_deps = t == "[dependencies]" || t == "[dev-dependencies]";
+                continue;
+            }
+            if !in_deps || t.is_empty() || t.starts_with('#') {
+                continue;
+            }
+            let Some(dep) = t.split(['=', '.']).next().map(str::trim) else { continue };
+            if dep.is_empty() {
+                continue;
+            }
+            assert!(
+                in_repo_crate(dep) || BASE_DEPENDENCIES.contains(&dep),
+                "{name} reads untrusted input and must not depend on `{dep}`"
+            );
+        }
+    }
+}
+
+/// A GUI crate may hold a toolkit, but must never parse an artifact itself.
+#[test]
+fn gui_crates_do_not_parse_anything() {
+    for name in ["cl-ui", "cl-screen-gui", "cl-auditor-gui"] {
+        let dir = repo_root().join("crates").join(name).join("src");
+        if !dir.is_dir() {
+            continue;
+        }
+        let mut text = String::new();
+        let mut stack = vec![dir];
+        while let Some(d) = stack.pop() {
+            for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().map(|x| x == "rs").unwrap_or(false) {
+                    text.push_str(&read(&p));
+                }
+            }
+        }
+        for needle in ["json::parse", "yamlish::parse", "tomlish::parse", "safetensors::", "gguf::", "onnx::"] {
+            assert!(
+                !text.contains(needle),
+                "{name} calls `{needle}`. Parsing belongs behind the library API, not in                  the UI layer, so that hostile bytes meet the bounded parsers and nothing else."
             );
         }
     }

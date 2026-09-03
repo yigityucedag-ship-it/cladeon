@@ -1,0 +1,21 @@
+[package]
+name = "cl-auditor-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "cladeon"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+rfd.workspace = true
+getrandom.workspace = true
+cl-core.workspace = true
+cl-case.workspace = true
+cl-verify.workspace = true
+cl-ui.workspace = true

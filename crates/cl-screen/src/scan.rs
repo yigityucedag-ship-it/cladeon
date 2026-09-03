@@ -31,6 +31,42 @@ use cl_facts::{ArtifactRecord, ArtifactType, DeclaredFacets, Fact, FactSet};
 use cl_formats::{detect, dispatch, ReadNeed};
 use cl_inventory::{Inventory, ScanOptions};
 
+/// Which stage the scan has reached.
+///
+/// Reported so a waiting person sees movement that corresponds to real work rather
+/// than an invented percentage. The plan is explicit about this: progress is based
+/// on bytes actually discovered, never on a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Phase {
+    #[default]
+    Inventory,
+    Parsing,
+    Judging,
+    Sealing,
+}
+
+impl Phase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Phase::Inventory => "Listing and hashing files",
+            Phase::Parsing => "Reading file metadata",
+            Phase::Judging => "Applying the rules",
+            Phase::Sealing => "Writing the evidence bundle",
+        }
+    }
+}
+
+/// A progress observation. Counts only, never a percentage of an unknown total.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Progress {
+    pub phase: Phase,
+    pub files_seen: u64,
+    pub bytes_seen: u64,
+    pub bytes_hashed: u64,
+    /// Files whose metadata has been parsed, during `Phase::Parsing`.
+    pub files_parsed: u64,
+}
+
 /// Everything a scan needs from the caller.
 pub struct ScanRequest {
     pub roots: Vec<PathBuf>,
@@ -96,7 +132,11 @@ fn read_for(path: &Path, need: ReadNeed, size: u64, limits: &Limits) -> ClResult
 }
 
 /// Run a whole scan.
-pub fn run(req: &ScanRequest, cancel: &dyn Fn() -> bool) -> ClResult<ScanResult> {
+pub fn run(
+    req: &ScanRequest,
+    cancel: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(Progress),
+) -> ClResult<ScanResult> {
     let started_at = Timestamp::now();
     let mut redactor = Redactor::new();
 
@@ -113,7 +153,15 @@ pub fn run(req: &ScanRequest, cancel: &dyn Fn() -> bool) -> ClResult<ScanResult>
         &opts,
         &|path, head| detect::classify(path, head),
         cancel,
-        &mut |_| {},
+        &mut |p| {
+            progress(Progress {
+                phase: Phase::Inventory,
+                files_seen: p.files_enumerated,
+                bytes_seen: p.bytes_enumerated,
+                bytes_hashed: p.bytes_hashed,
+                files_parsed: 0,
+            });
+        },
     )?;
 
     let mut facts = FactSet::new();
@@ -130,10 +178,19 @@ pub fn run(req: &ScanRequest, cancel: &dyn Fn() -> bool) -> ClResult<ScanResult>
     let mut ids = IdAllocator::new();
     let mut parsers: BTreeMap<String, (&'static str, i64)> = BTreeMap::new();
 
+    let mut parsed_count = 0u64;
     for a in &inventory.artifacts {
         if cancel() {
             return Err(ClError::io("cancelled"));
         }
+        parsed_count += 1;
+        progress(Progress {
+            phase: Phase::Parsing,
+            files_seen: inventory.files_enumerated,
+            bytes_seen: inventory.bytes_enumerated,
+            bytes_hashed: inventory.bytes_hashed,
+            files_parsed: parsed_count,
+        });
         if !detect::is_parseable(a.artifact_type) {
             continue;
         }
@@ -213,6 +270,13 @@ pub fn run(req: &ScanRequest, cancel: &dyn Fn() -> bool) -> ClResult<ScanResult>
     }
 
     // ---- judge ----------------------------------------------------------
+    progress(Progress {
+        phase: Phase::Judging,
+        files_seen: inventory.files_enumerated,
+        bytes_seen: inventory.bytes_enumerated,
+        bytes_hashed: inventory.bytes_hashed,
+        files_parsed: parsed_count,
+    });
     let rules = cl_rules::evaluate(&facts);
     let finished_at = Timestamp::now();
 
@@ -370,7 +434,7 @@ mod tests {
         );
         t.file("README.md", b"---\nbase_model: Qwen/Qwen2.5-7B\nlibrary_name: peft\n---\n# Model\n");
 
-        let r = run(&req(&t.root), &never()).expect("scan");
+        let r = run(&req(&t.root), &never(), &mut |_| {}).expect("scan");
         assert!(r.facts.artifacts.len() >= 3, "{:?}", r.facts.artifacts.len());
         assert!(r.facts.has(cl_facts::FactKind::AdapterConfig), "adapter config not parsed");
         assert!(
@@ -429,7 +493,7 @@ mod tests {
         t.file("README.md", b"---\nbase_model: Qwen/Qwen2.5-7B\n---\n");
         t.file("tokenizer_config.json", br#"{"tokenizer_class":"Qwen2Tokenizer"}"#);
 
-        let r = run(&req(&t.root), &never()).expect("scan");
+        let r = run(&req(&t.root), &never(), &mut |_| {}).expect("scan");
         let c = r.rules.conclusion(cl_core::vocab::Facet::ParameterUpdate).unwrap();
         assert!(
             !c.method_label_emitted,
@@ -444,7 +508,7 @@ mod tests {
         // A real pickle opcode stream. If anything tried to interpret it, that would
         // be the defect; the scanner must only hash it.
         t.file("pytorch_model.bin", b"\x80\x04\x95\x05\x00\x00\x00\x00\x00\x00\x00}\x94.");
-        let r = run(&req(&t.root), &never()).expect("scan");
+        let r = run(&req(&t.root), &never(), &mut |_| {}).expect("scan");
         let a = r
             .facts
             .artifacts
@@ -461,8 +525,8 @@ mod tests {
         let t = Tree::new("repeat");
         t.file("adapter/adapter_config.json", br#"{"peft_type":"LORA","r":8}"#);
         t.file("config.json", br#"{"model_type":"llama"}"#);
-        let a = run(&req(&t.root), &never()).unwrap();
-        let b = run(&req(&t.root), &never()).unwrap();
+        let a = run(&req(&t.root), &never(), &mut |_| {}).unwrap();
+        let b = run(&req(&t.root), &never(), &mut |_| {}).unwrap();
         assert_eq!(
             a.report.evidence_digest, b.report.evidence_digest,
             "unchanged evidence must produce the same digest"
@@ -472,7 +536,7 @@ mod tests {
     #[test]
     fn an_empty_directory_produces_a_report_that_says_so() {
         let t = Tree::new("empty");
-        let r = run(&req(&t.root), &never()).expect("scan");
+        let r = run(&req(&t.root), &never(), &mut |_| {}).expect("scan");
         for f in cl_core::vocab::Facet::ALL {
             let c = r.rules.conclusion(*f).unwrap();
             assert!(
@@ -489,7 +553,7 @@ mod tests {
             "serving.json",
             br#"{"api_key":"sk-abcdefghijklmnopqrstuvwxyz0123","endpoint_url":"https://api.example.com"}"#,
         );
-        let r = run(&req(&t.root), &never()).expect("scan");
+        let r = run(&req(&t.root), &never(), &mut |_| {}).expect("scan");
         let json = r.report.to_canonical_bytes();
         let text = String::from_utf8_lossy(&json);
         assert!(
@@ -502,7 +566,7 @@ mod tests {
     fn cancellation_stops_the_scan_rather_than_returning_a_partial_one() {
         let t = Tree::new("cancel");
         t.file("config.json", br#"{"model_type":"llama"}"#);
-        match run(&req(&t.root), &|| true) {
+        match run(&req(&t.root), &|| true, &mut |_| {}) {
             Err(e) => assert!(matches!(e, ClError::Io { .. }), "{e:?}"),
             Ok(_) => panic!("a cancelled scan must not return a result"),
         }
