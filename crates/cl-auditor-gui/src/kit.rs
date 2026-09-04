@@ -90,7 +90,7 @@ pub fn instructions(challenge: &cl_case::Challenge, scanner_included: bool) -> S
         )
     };
     let run_line = if scanner_included {
-        "2. Double-click  cladeon-screen.exe  in this folder."
+        "2. Double-click cladeon-screen.exe in this folder."
     } else {
         "2. Double-click the Cladeon Screen program you were sent."
     };

@@ -720,7 +720,7 @@ impl App {
             let total: u64 = f.redactions.iter().map(|(_, n)| n).sum();
             cl_ui::field(ui, "Removed before sending", &format!("{total} value(s)"));
             for (kind, n) in &f.redactions {
-                cl_ui::muted(ui, &format!("    {kind}: {n}"));
+                cl_ui::muted(ui, &format!(" {kind}: {n}"));
             }
         }
 
@@ -887,7 +887,7 @@ mod tests {
         for probe in ["text_edit_multiline", "ComboBox", "radio_value"] {
             assert!(
                 !body.contains(probe),
-                "`{probe}` is back on a vendor screen: the supplier is being asked to                  state their own case again"
+                "`{probe}` is back on a vendor screen: the supplier is being asked to state their own case again"
             );
         }
     }

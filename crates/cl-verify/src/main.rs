@@ -126,7 +126,7 @@ fn print_text(v: &verify::Verification, path: &std::path::Path) {
     println!("  coverage    {}", v.coverage);
     println!("  evidence    {}  ({})", v.evidence, v.evidence.render());
     println!(
-        "  recomputed  {}",
+        " recomputed {}",
         match &v.recomputation {
             Recomputation::Matches => "matches the report's own observations".to_string(),
             Recomputation::Diverges { .. } => "DIVERGES from the report's own observations".into(),

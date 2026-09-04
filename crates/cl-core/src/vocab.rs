@@ -471,6 +471,17 @@ pub const FORBIDDEN_WORDS: &[&str] = &[
     "guarantee",
     "guaranteed",
     "authentic",
+    // Screening is not accusation, and the interface must never use the word - not
+    // even to deny it. Saying "this is not an accusation" plants the idea it was
+    // one. This is a checked rule rather than a style note because it came back
+    // once already after being removed by hand.
+    "accuse",
+    "accuses",
+    "accused",
+    "accusing",
+    "accusation",
+    "accusations",
+    "accusatory",
 ];
 
 /// Multi-word or symbol-bearing forms, matched as substrings because they cannot

@@ -340,10 +340,9 @@ impl App {
         ui.add_space(8.0);
         cl_ui::body(
             ui,
-            "Cladeon compares what a supplier says about their system against the files they \
-             are willing to show. It reports how well the two fit — and says plainly when \
-             there is not enough to tell.",
+            "You write down what a supplier told you. They run a small program over their own files. Cladeon tells you how well the two fit.",
         );
+
         ui.add_space(20.0);
 
         ui.horizontal(|ui| {
@@ -372,10 +371,7 @@ impl App {
             ui,
             cl_ui::colour::NEUTRAL,
             "What this can and cannot tell you",
-            "It checks whether the evidence a vendor supplies is consistent with their claim. \
-             It cannot establish what they actually did, it cannot see what they chose not to \
-             send, and it never accuses anyone of anything. Its most common answer is that \
-             there was not enough evidence to decide — which is a real answer, not a failure.",
+            "It reports whether the files fit the claim. It cannot see what was not sent, and it does not decide what anyone intended. Its most common answer is that there was not enough evidence to tell, which is a real answer.",
         );
     }
 
@@ -608,7 +604,7 @@ impl App {
             ui.add_space(18.0);
             cl_ui::h2(ui, "Notes");
             for f in &v.findings {
-                cl_ui::body(ui, &format!("•  {f}"));
+                cl_ui::body(ui, &format!("• {f}"));
             }
         }
 

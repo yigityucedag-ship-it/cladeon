@@ -367,7 +367,7 @@ fn run_scan(a: RunArgs) -> ExitCode {
     println!("Cladeon Screen {}", cl_core::PRODUCT_VERSION);
     println!("case:     {case_id}");
     println!(
-        "scanned:  {} files, {} bytes",
+        "scanned: {} files, {} bytes",
         result.inventory.files_enumerated, result.inventory.bytes_enumerated
     );
     println!("coverage: {}", result.inventory.coverage_status);
