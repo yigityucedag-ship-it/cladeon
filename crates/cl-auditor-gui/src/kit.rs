@@ -49,6 +49,7 @@ pub fn build(
     challenge: &cl_case::Challenge,
     challenge_bytes: &[u8],
     signature: Option<&str>,
+    lang: cl_i18n::Lang,
 ) -> ClResult<Kit> {
     let dir = parent.join(challenge.case_id.as_str());
     std::fs::create_dir_all(&dir)?;
@@ -69,7 +70,18 @@ pub fn build(
         None => false,
     };
 
+    // The English page is always written. The buyer cannot know what the supplier
+    // reads, so when the buyer is working in another language its page is written
+    // too, under a name that is legible to the person who needs it. Two short text
+    // files cost nothing; a supplier who cannot read the only instructions in the
+    // folder costs the whole audit.
     std::fs::write(dir.join("READ ME FIRST.txt"), instructions(challenge, scanner_included))?;
+    if lang == cl_i18n::Lang::Tr {
+        std::fs::write(
+            dir.join("ÖNCE BUNU OKUYUN.txt"),
+            crate::instructions_tr::text(challenge, scanner_included),
+        )?;
+    }
     Ok(Kit { dir, scanner_included })
 }
 

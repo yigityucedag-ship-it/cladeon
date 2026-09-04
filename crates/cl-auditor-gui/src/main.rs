@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod instructions_tr;
 mod kit;
 
 use cl_core::ids::{CaseId, Nonce};
@@ -232,7 +233,7 @@ impl App {
             None => None,
         };
 
-        match kit::build(&parent, &challenge, &bytes, sig.as_deref()) {
+        match kit::build(&parent, &challenge, &bytes, sig.as_deref(), cl_ui::language()) {
             Ok(k) => {
                 self.kit_dir = Some(k.dir);
                 self.kit_scanner_included = k.scanner_included;
