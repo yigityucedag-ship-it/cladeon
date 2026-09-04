@@ -1030,3 +1030,51 @@ const TRANSLATION_EXEMPT: &[&str] = &[
     // The product name, in the window title and the side rail.
     "Cladeon evidence bundle",
 ];
+
+#[test]
+fn no_authored_sentence_reaches_the_screen_without_the_translator() {
+    // The coverage test above proves every display string *has* a Turkish rendering.
+    // It does not prove any of them reach the reader, and twice now they did not:
+    // prose passed as a `field` value, and the question and explanation in each
+    // status row, both rendered raw while everything around them translated. The
+    // interface looked half-finished in Turkish and every test passed.
+    //
+    // The rule this checks is narrow and mechanical: a string *literal* handed
+    // straight to a raw egui text call is authored text, and authored text goes
+    // through `tr`. Runtime values arrive in variables and are not matched here.
+    let mut raw: Vec<(String, String)> = Vec::new();
+    for rel in [
+        "crates/cl-screen-gui/src/main.rs",
+        "crates/cl-auditor-gui/src/main.rs",
+        "crates/cl-auditor-gui/src/help.rs",
+        "crates/cl-ui/src/lib.rs",
+    ] {
+        let src = read(&repo_root().join(rel));
+        let body = match src.find("mod tests") {
+            Some(i) => src[..i].to_string(),
+            None => src.clone(),
+        };
+        for (n, line) in body.lines().enumerate() {
+            let t = line.trim();
+            if t.starts_with("//") {
+                continue;
+            }
+            for call in ["ui.label(\"", "RichText::new(\"", "small_button(\"", "selectable_label(\""] {
+                if let Some(at) = t.find(call) {
+                    let rest = &t[at + call.len()..];
+                    let lit: String = rest.chars().take_while(|c| *c != '"').collect();
+                    // Short fragments are separators and units, not sentences.
+                    if lit.len() >= 4 && lit.contains(' ') {
+                        raw.push((format!("{rel}:{}", n + 1), lit));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        raw.is_empty(),
+        "{} authored string(s) rendered without `tr`:\n{}",
+        raw.len(),
+        raw.iter().map(|(w, s)| format!("  {w}\n    {s:?}")).collect::<Vec<_>>().join("\n")
+    );
+}

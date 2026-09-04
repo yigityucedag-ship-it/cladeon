@@ -287,6 +287,14 @@ pub fn callout(ui: &mut Ui, tone: Color32, title: &str, text: &str) {
 }
 
 /// A labelled row, aligned so a column of them reads as a table.
+///
+/// Both halves are translated. That looks wrong for a slot that usually holds a
+/// path or a checksum, and it is the safer default precisely because of how this
+/// failed once: values that were prose - the answers on the help screen, the
+/// explanation under each status - silently stayed English while everything around
+/// them translated. Translation of something not in the table returns it unchanged,
+/// so a path costs nothing here, whereas a missed sentence costs the reader the
+/// screen. Canonical vocabulary is kept out of this by going through `badge`.
 pub fn field(ui: &mut Ui, label: &str, value: &str) {
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
@@ -296,7 +304,7 @@ pub fn field(ui: &mut Ui, label: &str, value: &str) {
                 ui.label(RichText::new(tr(label)).size(16.0).color(colour::MUTED));
             },
         );
-        ui.label(RichText::new(value).size(17.0).color(colour::INK));
+        ui.label(RichText::new(tr(value)).size(17.0).color(colour::INK));
     });
 }
 

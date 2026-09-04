@@ -640,17 +640,17 @@ fn status_row(ui: &mut egui::Ui, question: &str, value: &str, colour: egui::Colo
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
-            egui::vec2(250.0, 20.0),
+            egui::vec2(290.0, 24.0),
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                ui.label(egui::RichText::new(question).size(14.0).strong());
+                ui.label(egui::RichText::new(cl_ui::tr(question)).size(17.0).strong());
             },
         );
         cl_ui::badge(ui, value, colour);
     });
     ui.horizontal(|ui| {
-        ui.add_space(250.0);
-        ui.label(egui::RichText::new(gloss).size(12.5).color(cl_ui::colour::MUTED));
+        ui.add_space(290.0);
+        ui.label(egui::RichText::new(cl_ui::tr(gloss)).size(15.5).color(cl_ui::colour::MUTED));
     });
 }
 
