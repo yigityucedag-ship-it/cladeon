@@ -155,12 +155,13 @@ fn load_or_create_key() -> Result<cl_case::IssuerKey, String> {
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cl_ui::apply_theme(&cc.egui_ctx);
+        cl_ui::set_language(cl_i18n::load());
         App::default()
     }
 
     fn create_case(&mut self) {
         self.error = None;
-        let parent = match rfd::FileDialog::new().set_title("Where should the vendor folder go?").pick_folder() {
+        let parent = match rfd::FileDialog::new().set_title(cl_ui::tr("Where should the vendor folder go?")).pick_folder() {
             Some(p) => p,
             None => return,
         };
@@ -251,7 +252,7 @@ impl App {
         self.error = None;
         self.notice = None;
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Save the instructions")
+            .set_title(cl_ui::tr("Save the instructions"))
             .set_file_name(cl_report::GUIDE_FILE_NAME)
             .add_filter("PDF", &["pdf"])
             .save_file()
@@ -268,7 +269,7 @@ impl App {
         self.error = None;
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Cladeon evidence bundle", &["clade"])
-            .set_title("Open the file the vendor sent back")
+            .set_title(cl_ui::tr("Open the file the vendor sent back"))
             .pick_file()
         else {
             return;
@@ -297,6 +298,8 @@ impl eframe::App for App {
                         .color(cl_ui::colour::MUTED),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    cl_ui::language_picker(ui);
+                    ui.add_space(10.0);
                     if self.page != Page::Home && cl_ui::secondary_button(ui, "Home") {
                         self.page = Page::Home;
                     }
@@ -388,7 +391,7 @@ impl App {
             (Some(WeightOrigin::DistilledFromTeacher), "They copied a bigger model's behaviour"),
             (None, "They did not say"),
         ] {
-            ui.radio_value(&mut self.claimed_origin, opt, label);
+            ui.radio_value(&mut self.claimed_origin, opt, cl_ui::tr(label));
         }
 
         ui.add_space(12.0);
@@ -401,8 +404,8 @@ impl App {
 
         ui.add_space(14.0);
         ui.horizontal(|ui| {
-            ui.label("Ask them to reply within");
-            ui.add(egui::DragValue::new(&mut self.valid_days).range(1..=90).suffix(" days"));
+            ui.label(cl_ui::tr("Ask them to reply within"));
+            ui.add(egui::DragValue::new(&mut self.valid_days).range(1..=90).suffix(cl_ui::tr(" days")));
         });
 
         ui.add_space(20.0);

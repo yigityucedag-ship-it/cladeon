@@ -20,3 +20,4 @@ cl-case.workspace = true
 cl-verify.workspace = true
 cl-report.workspace = true
 cl-ui.workspace = true
+cl-i18n.workspace = true

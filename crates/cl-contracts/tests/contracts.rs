@@ -908,3 +908,124 @@ fn every_test_named_in_the_acceptance_document_exists() {
         stale
     );
 }
+
+// ---------------------------------------------------------------------------
+// Translation coverage
+// ---------------------------------------------------------------------------
+
+/// Pull complete string literals out of Rust source, joining line continuations.
+///
+/// Crude by design. It does not need to understand Rust, only to find the text a
+/// reader would see on screen, and a literal that this misses is a literal the
+/// coverage check below will not police - so it errs towards collecting too much
+/// and lets the display-text filter throw the rest away.
+fn string_literals(src: &str) -> Vec<String> {
+    let b: Vec<char> = src.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] == '"' {
+            let mut j = i + 1;
+            let mut buf = String::new();
+            while j < b.len() {
+                if b[j] == '\\' && j + 1 < b.len() {
+                    if b[j + 1] == '\n' {
+                        // A continuation: drop the newline and the indent after it.
+                        j += 2;
+                        while j < b.len() && (b[j] == ' ' || b[j] == '\t') {
+                            j += 1;
+                        }
+                        continue;
+                    }
+                    buf.push(b[j]);
+                    buf.push(b[j + 1]);
+                    j += 2;
+                    continue;
+                }
+                if b[j] == '"' {
+                    break;
+                }
+                buf.push(b[j]);
+                j += 1;
+            }
+            out.push(buf);
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Whether a literal is text a user reads, as opposed to a path, tag or format.
+fn is_display_text(s: &str) -> bool {
+    let t = s.trim();
+    if t.len() < 12 || !t.contains(' ') {
+        return false;
+    }
+    if t.contains("://") || t.contains(".exe") || t.contains(".json") || t.contains(".rs") {
+        return false;
+    }
+    // Canonical vocabulary and identifiers: lowercase with underscores.
+    if t.chars().all(|c| c.is_ascii_lowercase() || c == '_' || c == ' ') && t.contains('_') {
+        return false;
+    }
+    let first = t.chars().next().unwrap_or(' ');
+    first.is_ascii_uppercase() || first == '\u{2022}' || first == '-'
+}
+
+#[test]
+fn every_display_string_in_the_interface_is_translated() {
+    // The lookup falls back to English for anything missing, which keeps a gap from
+    // showing the user an empty label - and would also let a gap ship unnoticed.
+    // This is what stops that: a sentence added to a screen and not to the table
+    // fails here, naming itself.
+    let mut missing: Vec<(String, String)> = Vec::new();
+    for rel in [
+        "crates/cl-screen-gui/src/main.rs",
+        "crates/cl-auditor-gui/src/main.rs",
+        "crates/cl-ui/src/lib.rs",
+    ] {
+        let src = read(&repo_root().join(rel));
+        let body = match src.find("mod tests") {
+            Some(i) => src[..i].to_string(),
+            None => src.clone(),
+        };
+        // Comment prose is not shown to anyone.
+        let body: String = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for lit in string_literals(&body) {
+            if !is_display_text(&lit) {
+                continue;
+            }
+            let unescaped = lit.replace("\\\"", "\"").replace("\\n", "\n");
+            if cl_i18n::t(cl_i18n::Lang::Tr, &unescaped) == unescaped
+                && !TRANSLATION_EXEMPT.contains(&unescaped.as_str())
+            {
+                missing.push((rel.to_string(), unescaped));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "{} display string(s) have no Turkish rendering:\n{}",
+        missing.len(),
+        missing
+            .iter()
+            .map(|(f, s)| format!("  {f}\n    {s:?}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// Strings that are display text but must stay as they are.
+///
+/// Every entry is a decision, not a backlog. Anything listed here is shown to the
+/// user untranslated on purpose, and the reason is written next to it.
+const TRANSLATION_EXEMPT: &[&str] = &[
+    // The product name, in the window title and the side rail.
+    "Cladeon evidence bundle",
+];

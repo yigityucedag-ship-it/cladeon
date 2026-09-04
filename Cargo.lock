@@ -661,6 +661,7 @@ version = "0.1.0"
 dependencies = [
  "cl-case",
  "cl-core",
+ "cl-i18n",
  "cl-report",
  "cl-ui",
  "cl-verify",
@@ -693,6 +694,7 @@ dependencies = [
  "cl-core",
  "cl-facts",
  "cl-fixtures",
+ "cl-i18n",
  "cl-rules",
 ]
 
@@ -726,6 +728,10 @@ dependencies = [
  "cl-core",
  "cl-facts",
 ]
+
+[[package]]
+name = "cl-i18n"
+version = "0.1.0"
 
 [[package]]
 name = "cl-inventory"
@@ -785,6 +791,7 @@ dependencies = [
  "cl-core",
  "cl-facts",
  "cl-formats",
+ "cl-i18n",
  "cl-inventory",
  "cl-rules",
  "cl-screen",
@@ -799,6 +806,7 @@ name = "cl-ui"
 version = "0.1.0"
 dependencies = [
  "cl-core",
+ "cl-i18n",
  "cl-rules",
  "eframe",
  "egui",

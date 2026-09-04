@@ -1,5 +1,5 @@
 [package]
-name = "cl-ui"
+name = "cl-i18n"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,8 +7,3 @@ license-file.workspace = true
 authors.workspace = true
 
 [dependencies]
-eframe.workspace = true
-egui.workspace = true
-cl-core.workspace = true
-cl-i18n.workspace = true
-cl-rules.workspace = true

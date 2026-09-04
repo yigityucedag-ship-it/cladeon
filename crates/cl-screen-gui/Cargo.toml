@@ -22,3 +22,4 @@ cl-rules.workspace = true
 cl-case.workspace = true
 cl-screen.workspace = true
 cl-ui.workspace = true
+cl-i18n.workspace = true

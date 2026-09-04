@@ -161,6 +161,7 @@ fn find_challenge_in(dir: &Path) -> Option<(cl_case::Challenge, Vec<u8>, Option<
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cl_ui::apply_theme(&cc.egui_ctx);
+        cl_ui::set_language(cl_i18n::load());
         let mut app = App::default();
         if let Some((ch, bytes, sig)) = find_challenge_beside_exe() {
             app.case_id = ch.case_id.as_str().to_string();
@@ -356,6 +357,8 @@ impl eframe::App for App {
             cl_ui::step_rail(ui, STEPS, self.step as usize);
             ui.add_space(18.0);
             ui.separator();
+            cl_ui::language_picker(ui);
+            ui.separator();
             cl_ui::muted(ui, "No internet connection is used.\nYour files are never run.");
         });
 
@@ -453,8 +456,8 @@ impl App {
         ui.add_space(16.0);
         if cl_ui::secondary_button(ui, "Find the file myself") {
             if let Some(f) = rfd::FileDialog::new()
-                .set_title("Open the request file you were sent")
-                .add_filter("Request file", &["json"])
+                .set_title(cl_ui::tr("Open the request file you were sent"))
+                .add_filter(cl_ui::tr("Request file"), &["json"])
                 .pick_file()
             {
                 match f.parent().and_then(find_challenge_in) {
@@ -502,7 +505,7 @@ impl App {
         let mut remove: Option<usize> = None;
         for (i, r) in self.roots.iter().enumerate() {
             ui.horizontal(|ui| {
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(cl_ui::tr("Remove")).clicked() {
                     remove = Some(i);
                 }
                 ui.label(egui::RichText::new(r.display().to_string()).size(13.0));
@@ -541,7 +544,7 @@ impl App {
                 let mut rm: Option<usize> = None;
                 for (i, r) in self.excluded.iter().enumerate() {
                     ui.horizontal(|ui| {
-                        if ui.small_button("Remove").clicked() {
+                        if ui.small_button(cl_ui::tr("Remove")).clicked() {
                             rm = Some(i);
                         }
                         ui.label(
@@ -577,7 +580,7 @@ impl App {
         if self.preflight_running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Looking at what is there. Nothing has been read yet.");
+                ui.label(cl_ui::tr("Looking at what is there. Nothing has been read yet."));
             });
             return;
         }
@@ -593,17 +596,17 @@ impl App {
             egui::Grid::new("scope").num_columns(3).striped(true).spacing([24.0, 6.0]).show(
                 ui,
                 |ui| {
-                    ui.label(egui::RichText::new("Kind of file").strong());
-                    ui.label(egui::RichText::new("Count").strong());
-                    ui.label(egui::RichText::new("Size").strong());
+                    ui.label(egui::RichText::new(cl_ui::tr("Kind of file")).strong());
+                    ui.label(egui::RichText::new(cl_ui::tr("Count")).strong());
+                    ui.label(egui::RichText::new(cl_ui::tr("Size")).strong());
                     ui.end_row();
                     for (t, n, b) in &p.by_type {
-                        ui.label(friendly_type(t));
+                        ui.label(cl_ui::tr(friendly_type(t)));
                         ui.label(n.to_string());
                         ui.label(cl_ui::bytes_human(*b));
                         ui.end_row();
                     }
-                    ui.label(egui::RichText::new("Total").strong());
+                    ui.label(egui::RichText::new(cl_ui::tr("Total")).strong());
                     ui.label(egui::RichText::new(p.total_files.to_string()).strong());
                     ui.label(egui::RichText::new(cl_ui::bytes_human(p.total_bytes)).strong());
                     ui.end_row();

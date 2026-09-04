@@ -9,6 +9,7 @@ members = [
     "crates/cl-formats",
     "crates/cl-rules",
     "crates/cl-markers",
+    "crates/cl-i18n",
     "crates/cl-report",
     "crates/cl-bundle",
     "crates/cl-case",
@@ -45,6 +46,7 @@ cl-inventory = { path = "crates/cl-inventory" }
 cl-formats = { path = "crates/cl-formats" }
 cl-rules = { path = "crates/cl-rules" }
 cl-markers = { path = "crates/cl-markers" }
+cl-i18n = { path = "crates/cl-i18n" }
 cl-report = { path = "crates/cl-report" }
 cl-bundle = { path = "crates/cl-bundle" }
 cl-case = { path = "crates/cl-case" }

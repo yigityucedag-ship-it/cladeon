@@ -143,25 +143,63 @@ pub fn facet_title(f: cl_core::vocab::Facet) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
+// Language
+// ---------------------------------------------------------------------------
+
+use std::sync::atomic::{AtomicU8, Ordering};
+
+static LANG: AtomicU8 = AtomicU8::new(0);
+
+/// Set the language every widget in this module renders in.
+///
+/// Process-wide rather than threaded through every call. Each application is a
+/// single window with one user in front of it, so there is exactly one right answer
+/// at any moment, and passing it down through every `h2` and `body` call would add a
+/// parameter to two hundred call sites to express something that is genuinely global.
+pub fn set_language(l: cl_i18n::Lang) {
+    LANG.store(match l {
+        cl_i18n::Lang::En => 0,
+        cl_i18n::Lang::Tr => 1,
+    }, Ordering::Relaxed);
+}
+
+pub fn language() -> cl_i18n::Lang {
+    match LANG.load(Ordering::Relaxed) {
+        1 => cl_i18n::Lang::Tr,
+        _ => cl_i18n::Lang::En,
+    }
+}
+
+/// Translate a display string into the current language.
+///
+/// Called by the widgets below, so ordinary screen code passes English and gets the
+/// user's language without knowing this exists. Values - paths, case numbers,
+/// checksums, and the canonical vocabulary the report is written in - go through
+/// `raw` widgets instead and are never touched.
+pub fn tr(text: &str) -> String {
+    cl_i18n::t(language(), text).to_string()
+}
+
+// ---------------------------------------------------------------------------
 // Widgets
 // ---------------------------------------------------------------------------
 
 pub fn h1(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(26.0).strong().color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(26.0).strong().color(colour::INK));
 }
 
 pub fn h2(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
-    ui.label(RichText::new(text).size(17.0).strong().color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(17.0).strong().color(colour::INK));
     ui.add_space(2.0);
 }
 
 pub fn muted(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(13.0).color(colour::MUTED));
+    ui.label(RichText::new(tr(text)).size(13.0).color(colour::MUTED));
 }
 
 pub fn body(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(14.5).color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(14.5).color(colour::INK));
 }
 
 /// A coloured status chip.
@@ -186,10 +224,10 @@ pub fn callout(ui: &mut Ui, tone: Color32, title: &str, text: &str) {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(3.0, 16.0), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 1.0, tone);
-                ui.label(RichText::new(title).size(13.5).strong().color(tone));
+                ui.label(RichText::new(tr(title)).size(13.5).strong().color(tone));
             });
             ui.add_space(3.0);
-            ui.label(RichText::new(text).size(13.0).color(colour::INK));
+            ui.label(RichText::new(tr(text)).size(13.0).color(colour::INK));
         });
 }
 
@@ -200,7 +238,7 @@ pub fn field(ui: &mut Ui, label: &str, value: &str) {
             egui::vec2(190.0, 18.0),
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                ui.label(RichText::new(label).size(13.0).color(colour::MUTED));
+                ui.label(RichText::new(tr(label)).size(13.0).color(colour::MUTED));
             },
         );
         ui.label(RichText::new(value).size(13.5).color(colour::INK));
@@ -221,11 +259,32 @@ pub fn step_rail(ui: &mut Ui, steps: &[&str], current: usize) {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
                 ui.painter().circle_filled(rect.center(), 4.5, dot);
-                ui.label(RichText::new(*s).size(13.0).color(text));
+                ui.label(RichText::new(tr(s)).size(13.0).color(text));
             });
             ui.add_space(6.0);
         }
     });
+}
+
+/// A language chooser, offering each language in its own words.
+///
+/// Always visible rather than tucked into a settings screen. Someone who has opened
+/// the wrong language cannot navigate to a settings screen to fix it - the words that
+/// would lead them there are the ones they cannot read - so the control has to be on
+/// whatever screen they are already looking at.
+pub fn language_picker(ui: &mut Ui) -> bool {
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        for l in cl_i18n::Lang::ALL {
+            let on = language() == *l;
+            if ui.selectable_label(on, RichText::new(l.endonym()).size(13.0)).clicked() && !on {
+                set_language(*l);
+                cl_i18n::save(*l);
+                changed = true;
+            }
+        }
+    });
+    changed
 }
 
 /// The sentence the product is legally and ethically obliged to show.
@@ -243,7 +302,7 @@ pub fn required_statement(ui: &mut Ui) {
 pub fn primary_button(ui: &mut Ui, text: &str, enabled: bool) -> bool {
     ui.add_enabled(
         enabled,
-        egui::Button::new(RichText::new(text).size(14.5).strong().color(Color32::WHITE))
+        egui::Button::new(RichText::new(tr(text)).size(14.5).strong().color(Color32::WHITE))
             .fill(if enabled { colour::ACCENT } else { colour::RULE })
             .corner_radius(4.0),
     )
@@ -251,7 +310,7 @@ pub fn primary_button(ui: &mut Ui, text: &str, enabled: bool) -> bool {
 }
 
 pub fn secondary_button(ui: &mut Ui, text: &str) -> bool {
-    ui.add(egui::Button::new(RichText::new(text).size(14.0).color(colour::INK)))
+    ui.add(egui::Button::new(RichText::new(tr(text)).size(14.0).color(colour::INK)))
         .clicked()
 }
 

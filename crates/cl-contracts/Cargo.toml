@@ -11,6 +11,7 @@ authors.workspace = true
 
 [dev-dependencies]
 cl-core.workspace = true
+cl-i18n.workspace = true
 cl-facts.workspace = true
 cl-rules.workspace = true
 cl-fixtures.workspace = true
