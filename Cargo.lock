@@ -662,7 +662,6 @@ dependencies = [
  "cl-case",
  "cl-core",
  "cl-i18n",
- "cl-report",
  "cl-ui",
  "cl-verify",
  "eframe",
@@ -732,6 +731,9 @@ dependencies = [
 [[package]]
 name = "cl-i18n"
 version = "0.1.0"
+dependencies = [
+ "cl-core",
+]
 
 [[package]]
 name = "cl-inventory"

@@ -6,4 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 authors.workspace = true
 
+[dev-dependencies]
+cl-core.workspace = true
+
 [dependencies]

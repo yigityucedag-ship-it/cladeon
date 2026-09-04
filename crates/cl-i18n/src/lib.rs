@@ -154,6 +154,17 @@ fn table() -> &'static HashMap<&'static str, &'static str> {
 /// turns up on more than one screen and a grouped table invites two translations of
 /// it that drift apart.
 pub const TR: &[(&str, &str)] = &[
+    // ---- the required statement --------------------------------------------
+    //
+    // Translated on screen, left in English inside the bundle. In the report it is
+    // part of a hashed, signed document and cannot move; on screen its entire job is
+    // to be understood, and a caveat in a language the reader does not have is
+    // decoration that looks like one.
+    (
+        "This Stage-1 report evaluates consistency within vendor-supplied evidence. It does not establish intent, independently verify the production environment, or prove historical training events that cannot be reconstructed from the supplied artifacts.",
+        "Bu Aşama-1 raporu, tedarikçinin sunduğu kanıtların kendi içindeki tutarlılığını değerlendirir. Niyet ortaya koymaz, üretim ortamını bağımsız olarak doğrulamaz ve sunulan belgelerden yeniden kurulamayan geçmiş eğitim olaylarını kanıtlamaz.",
+    ),
+
     // ---- shared chrome ----------------------------------------------------
     ("Cladeon Screen", "Cladeon Tarayıcı"),
     ("Back", "Geri"),
@@ -529,6 +540,180 @@ pub const TR: &[(&str, &str)] = &[
         "The report also notes {} thing(s) this scan could not see. Those are limits of the scan itself.",
         "Rapor ayrıca bu taramanın göremediği {} şeyi not eder. Bunlar taramanın kendi sınırlarıdır.",
     ),
+
+    // ---- help screen and band names ----------------------------------------
+    (
+        "How to use this",
+        "Bu nasıl kullanılır",
+    ),
+    (
+        "How to use Cladeon",
+        "Cladeon nasıl kullanılır",
+    ),
+    (
+        "Someone tells you they built their own AI. You would like to know whether that is what their files actually show.",
+        "Birileri size kendi yapay zekâlarını kurduklarını söylüyor. Dosyalarının gerçekten bunu gösterip göstermediğini bilmek istiyorsunuz.",
+    ),
+    (
+        "1.  Open a case",
+        "1.  Dosya açın",
+    ),
+    (
+        "Press \"Start a new check\" and answer the one question: what are they saying they built?",
+        "\"Yeni bir denetim başlat\" düğmesine basın ve tek soruyu yanıtlayın: ne kurduklarını söylüyorlar?",
+    ),
+    (
+        "Cladeon makes a folder named after the case. It holds the request and the small program they run.",
+        "Cladeon, dosya numarasıyla adlandırılmış bir klasör oluşturur. İçinde istek ve onların çalıştıracağı küçük program bulunur.",
+    ),
+    (
+        "2.  Send it to them",
+        "2.  Onlara gönderin",
+    ),
+    (
+        "Right-click the folder, choose Send to, then Compressed (zipped) folder. Attach that to an e-mail.",
+        "Klasöre sağ tıklayın, Gönder seçeneğini, ardından Sıkıştırılmış klasör seçeneğini seçin. Onu bir e-postaya ekleyin.",
+    ),
+    (
+        "They need no account, no internet connection and no administrator. They open one program and follow five screens.",
+        "Hesaba, internet bağlantısına veya yönetici iznine ihtiyaçları yoktur. Tek bir program açar ve beş ekranı izlerler.",
+    ),
+    (
+        "3.  Read what comes back",
+        "3.  Geri geleni okuyun",
+    ),
+    (
+        "They reply with one file ending in .clade  Press \"Open a file a vendor sent back\" and choose it.",
+        "Size .clade uzantılı tek bir dosya gönderirler. \"Tedarikçinin gönderdiği dosyayı aç\" düğmesine basıp onu seçin.",
+    ),
+    (
+        "What the report tells you",
+        "Raporun size söyledikleri",
+    ),
+    (
+        "There is no single score. Five separate questions are answered, and a good answer to one is never allowed to speak for the others.",
+        "Tek bir puan yoktur. Beş ayrı soru yanıtlanır ve birine verilen iyi bir yanıtın diğerleri adına konuşmasına asla izin verilmez.",
+    ),
+    (
+        "Whether anything was edited after they made it.",
+        "Oluşturulduktan sonra bir şeyin düzenlenip düzenlenmediği.",
+    ),
+    (
+        "Whether it is tied to the case you opened, not another one.",
+        "Açtığınız dosyaya mı, yoksa başka birine mi bağlı olduğu.",
+    ),
+    (
+        "Whether the printed report was re-exported or copied.",
+        "Basılı raporun yeniden dışa aktarılıp aktarılmadığı veya kopyalanıp kopyalanmadığı.",
+    ),
+    (
+        "Whether parts were left out. Leaving things out is allowed.",
+        "Bazı bölümlerin dışarıda bırakılıp bırakılmadığı. Bir şeyi dışarıda bırakmak serbesttir.",
+    ),
+    (
+        "Do the files fit the claim?",
+        "Dosyalar iddiaya uyuyor mu?",
+    ),
+    (
+        "The actual finding.",
+        "Asıl bulgu budur.",
+    ),
+    (
+        "What the finding can say",
+        "Bulgunun söyleyebilecekleri",
+    ),
+    (
+        "Two things worth knowing",
+        "Bilinmesi gereken iki şey",
+    ),
+    (
+        "If it says the files do not fit",
+        "Dosyalar uymuyor diyorsa",
+    ),
+    (
+        "It means the files disagree with the claim, within what was shown. It is a reason to ask a follow-up question. It is not a statement about anyone's honesty, and Cladeon does not make one.",
+        "Bu, gösterilenler çerçevesinde dosyaların iddiayla uyuşmadığı anlamına gelir. Ek bir soru sormak için bir gerekçedir. Kimsenin dürüstlüğü hakkında bir yargı değildir ve Cladeon böyle bir yargıda bulunmaz.",
+    ),
+    (
+        "Questions people ask",
+        "Sıkça sorulan sorular",
+    ),
+    (
+        "Does it upload anything?",
+        "Herhangi bir şey yükler mi?",
+    ),
+    (
+        "No. Neither program opens a network connection.",
+        "Hayır. İki program da ağ bağlantısı açmaz.",
+    ),
+    (
+        "Will it slow their machine down?",
+        "Bilgisayarlarını yavaşlatır mı?",
+    ),
+    (
+        "It reads file headers and checksums. Minutes, not hours.",
+        "Dosya başlıklarını ve sağlama toplamlarını okur. Saatler değil, dakikalar sürer.",
+    ),
+    (
+        "What if they will not show something?",
+        "Bir şeyi göstermek istemezlerse ne olur?",
+    ),
+    (
+        "They can exclude it. The report records that a folder was excluded, never what was in it.",
+        "Onu hariç tutabilirler. Rapor, bir klasörün hariç tutulduğunu kaydeder; içinde ne olduğunu asla kaydetmez.",
+    ),
+    (
+        "Can they edit the report?",
+        "Raporu düzenleyebilirler mi?",
+    ),
+    (
+        "They can edit the file, but the checks stop matching and Cladeon says so.",
+        "Dosyayı düzenleyebilirler, ancak kontroller tutmaz ve Cladeon bunu bildirir.",
+    ),
+    (
+        "Is a screenshot enough?",
+        "Ekran görüntüsü yeterli mi?",
+    ),
+    (
+        "No. It must be the .clade file itself, unchanged.",
+        "Hayır. Dosyanın kendisi, .clade uzantılı hâliyle ve değiştirilmeden gönderilmelidir.",
+    ),
+    (
+        "Does it settle whether they trained a model?",
+        "Bir model eğitip eğitmediklerini kesin olarak belirler mi?",
+    ),
+    (
+        "No, and it does not claim to. Read the line at the foot of every screen.",
+        "Hayır ve böyle bir iddiada da bulunmaz. Her ekranın altındaki satırı okuyun.",
+    ),
+    (
+        "Corroborated",
+        "Doğrulandı",
+    ),
+    (
+        "Strongly consistent",
+        "Güçlü biçimde tutarlı",
+    ),
+    (
+        "Weakly consistent",
+        "Zayıf biçimde tutarlı",
+    ),
+    (
+        "Partially supported",
+        "Kısmen destekleniyor",
+    ),
+    (
+        "Not enough evidence",
+        "Yeterli kanıt yok",
+    ),
+    (
+        "The files do not fit",
+        "Dosyalar uymuyor",
+    ),
+    (
+        "Nothing of that kind was sent",
+        "Bu türde bir şey gönderilmedi",
+    ),
 ];
 
 #[cfg(test)]
@@ -576,6 +761,19 @@ mod tests {
         for ch in ['ç', 'ğ', 'ı', 'İ', 'ö', 'ş', 'ü'] {
             assert!(joined.contains(ch), "no `{ch}` anywhere: the diacritics were stripped");
         }
+    }
+
+    #[test]
+    fn the_required_statement_resolves_from_the_constant_itself() {
+        // Transcribed by hand into the table, so the risk is a near-miss that looks
+        // right in review and silently falls back to English at runtime. Looking it
+        // up through the constant is the only check that catches that.
+        let tr = t(Lang::Tr, cl_core::REQUIRED_STATEMENT);
+        assert_ne!(
+            tr, cl_core::REQUIRED_STATEMENT,
+            "the table key no longer matches REQUIRED_STATEMENT character for character"
+        );
+        assert!(tr.contains("Aşama-1"), "{tr}");
     }
 
     #[test]

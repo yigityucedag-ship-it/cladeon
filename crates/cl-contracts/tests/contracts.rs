@@ -984,6 +984,7 @@ fn every_display_string_in_the_interface_is_translated() {
     for rel in [
         "crates/cl-screen-gui/src/main.rs",
         "crates/cl-auditor-gui/src/main.rs",
+        "crates/cl-auditor-gui/src/help.rs",
         "crates/cl-ui/src/lib.rs",
     ] {
         let src = read(&repo_root().join(rel));

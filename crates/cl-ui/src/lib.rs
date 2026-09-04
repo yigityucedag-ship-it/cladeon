@@ -46,14 +46,51 @@ pub mod colour {
 
 /// Apply the shared look. Called once at startup by each app.
 pub fn apply_theme(ctx: &egui::Context) {
+    install_a_heavier_face(ctx);
     let mut style = (*ctx.style()).clone();
-    style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-    style.spacing.button_padding = egui::vec2(14.0, 8.0);
+    style.spacing.item_spacing = egui::vec2(9.0, 9.0);
+    style.spacing.button_padding = egui::vec2(16.0, 10.0);
     style.visuals = egui::Visuals::light();
     style.visuals.panel_fill = colour::PAPER;
     style.visuals.window_fill = colour::PAPER;
     style.visuals.override_text_color = Some(colour::INK);
     ctx.set_style(style);
+}
+
+/// Swap in a heavier system face for body text.
+///
+/// egui ships one proportional font, Ubuntu-Light, and there is no synthetic
+/// bolding: `strong()` changes colour, not weight. On a light background at the
+/// sizes this interface uses, Light is genuinely hard to read for anyone with
+/// ageing eyes, which is most of the people this product is for.
+///
+/// Segoe UI Semibold is read from the system font folder rather than bundled. It is
+/// already on every supported Windows, it has complete Turkish coverage including
+/// the dotless i, and reading it in place avoids redistributing a font this project
+/// has no licence to ship. If it is missing - a stripped install, or another
+/// platform - nothing happens and egui keeps its own font, so this can only improve
+/// matters or do nothing.
+fn install_a_heavier_face(ctx: &egui::Context) {
+    const CANDIDATES: &[&str] = &[
+        r"C:\Windows\Fonts\seguisb.ttf", // Segoe UI Semibold
+        r"C:\Windows\Fonts\segoeui.ttf",  // Segoe UI Regular
+    ];
+    let Some(bytes) = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok()) else {
+        return;
+    };
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "ui".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+    );
+    // Inserted at the front so it wins, with egui's own font left behind it as the
+    // fallback for glyphs Segoe does not carry.
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "ui".to_owned());
+    ctx.set_fonts(fonts);
 }
 
 /// Colour for a support band.
@@ -106,6 +143,24 @@ pub fn coverage_colour(s: CoverageStatus) -> Color32 {
 ///
 /// The enum names are precise and unreadable. Somebody in procurement needs a
 /// sentence, and it has to carry the same caution as the term it explains.
+/// The short name a band is called by in an interface.
+///
+/// `render()` gives the full phrase a report prints - "Corroborated within
+/// vendor-supplied evidence" - which is right in a document and too long for a
+/// label. Both come from the same enum, so a new band cannot acquire one and not
+/// the other.
+pub fn band_short_name(b: SupportBand) -> &'static str {
+    match b {
+        SupportBand::Corroborated => "Corroborated",
+        SupportBand::StronglyConsistent => "Strongly consistent",
+        SupportBand::WeaklyConsistent => "Weakly consistent",
+        SupportBand::PartiallySupported => "Partially supported",
+        SupportBand::InsufficientEvidence => "Not enough evidence",
+        SupportBand::Contradicted => "The files do not fit",
+        SupportBand::NotSupplied => "Nothing of that kind was sent",
+    }
+}
+
 pub fn band_plain_english(b: SupportBand) -> &'static str {
     match b {
         SupportBand::Corroborated => {
@@ -185,21 +240,21 @@ pub fn tr(text: &str) -> String {
 // ---------------------------------------------------------------------------
 
 pub fn h1(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(tr(text)).size(26.0).strong().color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(31.0).strong().color(colour::INK));
 }
 
 pub fn h2(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
-    ui.label(RichText::new(tr(text)).size(17.0).strong().color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(22.0).strong().color(colour::INK));
     ui.add_space(2.0);
 }
 
 pub fn muted(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(tr(text)).size(13.0).color(colour::MUTED));
+    ui.label(RichText::new(tr(text)).size(16.0).color(colour::MUTED));
 }
 
 pub fn body(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(tr(text)).size(14.5).color(colour::INK));
+    ui.label(RichText::new(tr(text)).size(18.0).color(colour::INK));
 }
 
 /// A coloured status chip.
@@ -209,7 +264,7 @@ pub fn badge(ui: &mut Ui, text: &str, fill: Color32) {
         .corner_radius(4.0)
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
-            ui.label(RichText::new(text).size(12.5).strong().color(Color32::WHITE));
+            ui.label(RichText::new(text).size(15.0).strong().color(Color32::WHITE));
         });
 }
 
@@ -224,10 +279,10 @@ pub fn callout(ui: &mut Ui, tone: Color32, title: &str, text: &str) {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(3.0, 16.0), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 1.0, tone);
-                ui.label(RichText::new(tr(title)).size(13.5).strong().color(tone));
+                ui.label(RichText::new(tr(title)).size(17.0).strong().color(tone));
             });
             ui.add_space(3.0);
-            ui.label(RichText::new(tr(text)).size(13.0).color(colour::INK));
+            ui.label(RichText::new(tr(text)).size(16.5).color(colour::INK));
         });
 }
 
@@ -235,13 +290,13 @@ pub fn callout(ui: &mut Ui, tone: Color32, title: &str, text: &str) {
 pub fn field(ui: &mut Ui, label: &str, value: &str) {
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
-            egui::vec2(190.0, 18.0),
+            egui::vec2(240.0, 22.0),
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                ui.label(RichText::new(tr(label)).size(13.0).color(colour::MUTED));
+                ui.label(RichText::new(tr(label)).size(16.0).color(colour::MUTED));
             },
         );
-        ui.label(RichText::new(value).size(13.5).color(colour::INK));
+        ui.label(RichText::new(value).size(17.0).color(colour::INK));
     });
 }
 
@@ -259,7 +314,7 @@ pub fn step_rail(ui: &mut Ui, steps: &[&str], current: usize) {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
                 ui.painter().circle_filled(rect.center(), 4.5, dot);
-                ui.label(RichText::new(tr(s)).size(13.0).color(text));
+                ui.label(RichText::new(tr(s)).size(16.0).color(text));
             });
             ui.add_space(6.0);
         }
@@ -277,7 +332,7 @@ pub fn language_picker(ui: &mut Ui) -> bool {
     ui.horizontal_wrapped(|ui| {
         for l in cl_i18n::Lang::ALL {
             let on = language() == *l;
-            if ui.selectable_label(on, RichText::new(l.endonym()).size(13.0)).clicked() && !on {
+            if ui.selectable_label(on, RichText::new(l.endonym()).size(16.0)).clicked() && !on {
                 set_language(*l);
                 cl_i18n::save(*l);
                 changed = true;
@@ -288,11 +343,18 @@ pub fn language_picker(ui: &mut Ui) -> bool {
 }
 
 /// The sentence the product is legally and ethically obliged to show.
+/// The sentence the product is obliged to show, in the reader's language.
+///
+/// It is translated on screen and left in English inside the bundle, and those are
+/// not in tension. In the report it is carried verbatim as part of a document that
+/// is hashed and signed, so it cannot move. On screen its whole purpose is to be
+/// understood, and a caveat printed in a language the reader does not have is not a
+/// caveat - it is decoration that looks like one.
 pub fn required_statement(ui: &mut Ui) {
     ui.add_space(4.0);
     ui.label(
-        RichText::new(cl_core::REQUIRED_STATEMENT)
-            .size(11.5)
+        RichText::new(tr(cl_core::REQUIRED_STATEMENT))
+            .size(14.5)
             .italics()
             .color(colour::MUTED),
     );
@@ -302,7 +364,7 @@ pub fn required_statement(ui: &mut Ui) {
 pub fn primary_button(ui: &mut Ui, text: &str, enabled: bool) -> bool {
     ui.add_enabled(
         enabled,
-        egui::Button::new(RichText::new(tr(text)).size(14.5).strong().color(Color32::WHITE))
+        egui::Button::new(RichText::new(tr(text)).size(18.0).strong().color(Color32::WHITE))
             .fill(if enabled { colour::ACCENT } else { colour::RULE })
             .corner_radius(4.0),
     )
@@ -310,7 +372,7 @@ pub fn primary_button(ui: &mut Ui, text: &str, enabled: bool) -> bool {
 }
 
 pub fn secondary_button(ui: &mut Ui, text: &str) -> bool {
-    ui.add(egui::Button::new(RichText::new(tr(text)).size(14.0).color(colour::INK)))
+    ui.add(egui::Button::new(RichText::new(tr(text)).size(17.0).color(colour::INK)))
         .clicked()
 }
 

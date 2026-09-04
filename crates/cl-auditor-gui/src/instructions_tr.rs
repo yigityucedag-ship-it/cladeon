@@ -82,13 +82,20 @@ pub fn text(challenge: &cl_case::Challenge, scanner_included: bool) -> String {
          bulgu olarak değerlendirilmez.\n\
          \n\
          \n\
-         {statement}\n",
+         {statement}\n\
+         \n\
+         (Raporun kendisi bu ifadeyi İngilizce olarak, değiştirilmeden taşır:)\n\
+         {statement_en}\n",
         opening = opening,
         claim = challenge.exact_claim_text,
         case = challenge.case_id,
         expires = challenge.expires_at.to_rfc3339(),
         run_line = run_line,
-        statement = cl_core::REQUIRED_STATEMENT,
+        // Turkish on the page, English underneath. The reader needs to understand
+        // it; the auditor comparing this page against the report needs to see that
+        // they say the same thing.
+        statement = cl_i18n::t(cl_i18n::Lang::Tr, cl_core::REQUIRED_STATEMENT),
+        statement_en = cl_core::REQUIRED_STATEMENT,
     )
 }
 
@@ -138,10 +145,12 @@ mod tests {
     }
 
     #[test]
-    fn it_carries_the_required_statement() {
-        // The statement itself stays in English: it is the legal text the report
-        // carries verbatim, and a translated copy would be a different statement.
-        assert!(text(&sample(), true).contains("does not establish intent"));
+    fn it_carries_the_required_statement_in_both_languages() {
+        // Turkish so the reader understands it, English underneath so anyone
+        // comparing this page against the report can see they say the same thing.
+        let t = text(&sample(), true);
+        assert!(t.contains("Niyet ortaya koymaz"), "the Turkish statement is missing");
+        assert!(t.contains("does not establish intent"), "the English original is missing");
     }
 
     #[test]
