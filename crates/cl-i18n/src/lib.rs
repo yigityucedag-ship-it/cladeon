@@ -358,8 +358,8 @@ pub const TR: &[(&str, &str)] = &[
     // ---- auditor: home ----------------------------------------------------
     ("Check how a vendor built their AI", "Bir tedarikçinin yapay zekâsını nasıl kurduğunu denetleyin"),
     (
-        "You write down what a supplier told you. They run a small program over their own files. Cladeon tells you how well the two fit.",
-        "Bir tedarikçinin size söylediklerini kaydedersiniz. Onlar kendi dosyaları üzerinde küçük bir program çalıştırır. Cladeon ikisinin ne kadar örtüştüğünü söyler.",
+        "You pick what a supplier says they built. They run a small program over their own files. Cladeon tells you how well the two fit.",
+        "Bir tedarikçinin ne kurduğunu söylediğini seçersiniz. Onlar kendi dosyaları üzerinde küçük bir program çalıştırır. Cladeon ikisinin ne kadar örtüştüğünü söyler.",
     ),
     ("Start a new check", "Yeni bir denetim başlat"),
     ("Open a file a vendor sent back", "Tedarikçinin gönderdiği dosyayı aç"),

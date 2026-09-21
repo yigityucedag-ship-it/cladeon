@@ -346,7 +346,7 @@ impl App {
         ui.add_space(8.0);
         cl_ui::body(
             ui,
-            "You write down what a supplier told you. They run a small program over their own files. Cladeon tells you how well the two fit.",
+            "You pick what a supplier says they built. They run a small program over their own files. Cladeon tells you how well the two fit.",
         );
 
         ui.add_space(20.0);
