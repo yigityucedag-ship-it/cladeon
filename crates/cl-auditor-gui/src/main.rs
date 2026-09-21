@@ -159,7 +159,11 @@ impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cl_ui::apply_theme(&cc.egui_ctx);
         cl_ui::set_language(cl_i18n::load());
-        App::default()
+        let mut app = App::default();
+        if let Some(path) = bundle_from_args(std::env::args_os().skip(1)) {
+            app.open_bundle_at(path);
+        }
+        app
     }
 
     fn create_case(&mut self) {
@@ -261,6 +265,17 @@ impl App {
         else {
             return;
         };
+        self.open_bundle_at(path);
+    }
+
+    /// Open a returned bundle from a known path.
+    ///
+    /// Split from the dialog so a `.clade` file can be opened by double-clicking it,
+    /// which hands the path to the program as its first argument. Someone who has
+    /// just saved an e-mail attachment should not have to find it a second time
+    /// through a file picker.
+    fn open_bundle_at(&mut self, path: PathBuf) {
+        self.error = None;
         match std::fs::read(&path) {
             Err(e) => self.error = Some(format!("that file could not be read: {e}")),
             Ok(bytes) => {
@@ -654,6 +669,17 @@ fn status_row(ui: &mut egui::Ui, question: &str, value: &str, colour: egui::Colo
     });
 }
 
+/// The first argument, when it names a `.clade` file.
+///
+/// Anything else is ignored rather than reported: Windows passes unexpected
+/// arguments in some launch paths, and an error dialog on startup for an argument
+/// the user never typed would be baffling.
+fn bundle_from_args(mut args: impl Iterator<Item = std::ffi::OsString>) -> Option<PathBuf> {
+    let p = PathBuf::from(args.next()?);
+    let is_clade = p.extension().map(|e| e.eq_ignore_ascii_case("clade")).unwrap_or(false);
+    (is_clade && p.is_file()).then_some(p)
+}
+
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -668,6 +694,24 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_existing_clade_file_is_taken_from_the_command_line() {
+        use std::ffi::OsString;
+        assert_eq!(bundle_from_args(std::iter::empty()), None);
+        assert_eq!(bundle_from_args([OsString::from("--flag")].into_iter()), None);
+        assert_eq!(bundle_from_args([OsString::from("missing.clade")].into_iter()), None);
+
+        let dir = std::env::temp_dir().join(format!("cl-args-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let real = dir.join("reply.CLADE");
+        std::fs::write(&real, b"x").unwrap();
+        let other = dir.join("reply.txt");
+        std::fs::write(&other, b"x").unwrap();
+        assert_eq!(bundle_from_args([real.clone().into_os_string()].into_iter()), Some(real));
+        assert_eq!(bundle_from_args([other.into_os_string()].into_iter()), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn every_option_yields_its_own_sentence_and_the_silent_one_asserts_nothing() {
