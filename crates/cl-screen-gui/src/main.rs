@@ -54,6 +54,46 @@ struct Preflight {
     total_bytes: u64,
     opaque: u64,
     unreadable: Vec<String>,
+    /// Sub-folders holding a large share of the files, biggest first.
+    busiest: Vec<(PathBuf, u64)>,
+}
+
+/// Sub-folders, one level below each chosen folder, that hold a large share of the
+/// files, biggest first.
+///
+/// A folder of research papers or a package cache can hold a hundred thousand files
+/// and no model at all, and every one of them costs a Windows security check when
+/// the real scan opens it. Showing where the files are lets the supplier leave such
+/// a folder out with one press instead of waiting on it.
+fn busiest_folders<'a>(
+    roots: &[PathBuf],
+    files: impl Iterator<Item = &'a PathBuf>,
+    total: u64,
+) -> Vec<(PathBuf, u64)> {
+    // The scanner walks canonical paths, so compare against the canonical root but
+    // hand back the path as the supplier chose it.
+    let canon: Vec<(&PathBuf, PathBuf)> = roots
+        .iter()
+        .map(|r| (r, std::fs::canonicalize(r).unwrap_or_else(|_| r.clone())))
+        .collect();
+    let mut counts: BTreeMap<PathBuf, u64> = BTreeMap::new();
+    for f in files {
+        for (user, c) in &canon {
+            if let Ok(rest) = f.strip_prefix(c) {
+                let mut parts = rest.components();
+                // A file directly in the chosen folder has no sub-folder to leave out.
+                if let (Some(first), Some(_)) = (parts.next(), parts.next()) {
+                    *counts.entry(user.join(first)).or_default() += 1;
+                }
+                break;
+            }
+        }
+    }
+    let floor = (total / 10).max(1000);
+    let mut v: Vec<(PathBuf, u64)> = counts.into_iter().filter(|(_, n)| *n >= floor).collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v.truncate(5);
+    v
 }
 
 /// What the scan produced, reduced to what the window needs.
@@ -207,10 +247,13 @@ impl App {
             let mut redactor = Redactor::new();
             let opts = cl_inventory::ScanOptions {
                 limits: Limits::default(),
-                // A preflight looks; it does not read. Nothing is hashed here.
+                // A preflight looks; it does not read. No file is opened here: kinds
+                // are judged from names alone, and nothing is hashed. Opening every
+                // file made Windows security-check each one, which on a large folder
+                // took a quarter of an hour before the supplier had agreed to anything.
                 hash_files: false,
                 excluded,
-                head_bytes: cl_formats::detect::CLASSIFY_HEAD_BYTES,
+                head_bytes: 0,
             };
             let out = cl_inventory::scan(
                 &roots,
@@ -229,7 +272,13 @@ impl App {
                         e.0 += 1;
                         e.1 = e.1.saturating_add(a.size_bytes);
                     }
+                    let busiest = busiest_folders(
+                        &roots,
+                        inv.real_paths.values(),
+                        inv.files_enumerated,
+                    );
                     Ok(Preflight {
+                        busiest,
                         by_type: by.into_iter().map(|(k, v)| (k.to_string(), v.0, v.1)).collect(),
                         total_files: inv.files_enumerated,
                         total_bytes: inv.bytes_enumerated,
@@ -596,7 +645,7 @@ impl App {
             egui::Grid::new("scope").num_columns(3).striped(true).spacing([24.0, 6.0]).show(
                 ui,
                 |ui| {
-                    ui.label(egui::RichText::new(cl_ui::tr("Kind of file")).strong());
+                    ui.label(egui::RichText::new(cl_ui::tr("Kind of file (by its name)")).strong());
                     ui.label(egui::RichText::new(cl_ui::tr("Count")).strong());
                     ui.label(egui::RichText::new(cl_ui::tr("Size")).strong());
                     ui.end_row();
@@ -612,6 +661,42 @@ impl App {
                     ui.end_row();
                 },
             );
+
+            if !p.busiest.is_empty() {
+                ui.add_space(14.0);
+                cl_ui::h2(ui, "Folders with the most files");
+                cl_ui::body(
+                    ui,
+                    "Every file adds time to the scan. If one of these does not hold your model \
+                     or its training records, you can leave it out. The report will say a folder \
+                     was left out, never what was in it.",
+                );
+                ui.add_space(6.0);
+                let mut leave: Option<PathBuf> = None;
+                for (dir, n) in &p.busiest {
+                    ui.horizontal(|ui| {
+                        if cl_ui::secondary_button(ui, "Leave this out") {
+                            leave = Some(dir.clone());
+                        }
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{}   ({} {})",
+                                dir.display(),
+                                n,
+                                cl_ui::tr("files")
+                            ))
+                            .size(15.0),
+                        );
+                    });
+                }
+                if let Some(d) = leave {
+                    if !self.excluded.contains(&d) {
+                        self.excluded.push(d);
+                    }
+                    self.preflight = None;
+                    return;
+                }
+            }
 
             if p.opaque > 0 {
                 ui.add_space(12.0);
@@ -813,6 +898,32 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_busiest_folders_are_found_one_level_down() {
+        let root = temp_kit("busy");
+        let big = root.join("papers");
+        let small = root.join("model");
+        std::fs::create_dir_all(&big).unwrap();
+        std::fs::create_dir_all(&small).unwrap();
+        let canon = std::fs::canonicalize(&root).unwrap();
+        let mut files: Vec<PathBuf> =
+            (0..3000).map(|i| canon.join("papers").join(format!("{i}.pdf"))).collect();
+        files.push(canon.join("model").join("config.json"));
+        files.push(canon.join("top-level.txt"));
+        let got = busiest_folders(&[root.clone()], files.iter(), files.len() as u64);
+        assert_eq!(got, vec![(root.join("papers"), 3000)]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_small_tree_suggests_nothing() {
+        let root = temp_kit("quiet");
+        let canon = std::fs::canonicalize(&root).unwrap();
+        let files: Vec<PathBuf> = (0..50).map(|i| canon.join("a").join(format!("{i}"))).collect();
+        assert!(busiest_folders(&[root.clone()], files.iter(), 50).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn friendly_names_replace_the_machine_vocabulary() {

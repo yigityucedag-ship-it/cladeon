@@ -189,10 +189,11 @@ fn preflight(roots: &[PathBuf], excluded: &[PathBuf]) -> ExitCode {
     let mut redactor = Redactor::new();
     let opts = cl_inventory::ScanOptions {
         limits: Limits::default(),
-        // Preflight never hashes: it is a look, not a read.
+        // Preflight never hashes and never opens a file: it is a look, not a read.
+        // Kinds are judged from names alone.
         hash_files: false,
         excluded: excluded.to_vec(),
-        head_bytes: cl_formats::detect::CLASSIFY_HEAD_BYTES,
+        head_bytes: 0,
     };
     let inv = match cl_inventory::scan(
         roots,

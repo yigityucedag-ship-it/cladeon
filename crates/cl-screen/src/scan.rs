@@ -134,7 +134,7 @@ fn read_for(path: &Path, need: ReadNeed, size: u64, limits: &Limits) -> ClResult
 /// Run a whole scan.
 pub fn run(
     req: &ScanRequest,
-    cancel: &dyn Fn() -> bool,
+    cancel: &(dyn Fn() -> bool + Sync),
     progress: &mut dyn FnMut(Progress),
 ) -> ClResult<ScanResult> {
     let started_at = Timestamp::now();

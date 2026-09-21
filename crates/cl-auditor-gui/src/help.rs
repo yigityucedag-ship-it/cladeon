@@ -78,7 +78,10 @@ pub fn draw(ui: &mut egui::Ui) -> bool {
     cl_ui::h2(ui, "Questions people ask");
     for (q, a) in [
         ("Does it upload anything?", "No. Neither program opens a network connection."),
-        ("Will it slow their machine down?", "It reads file headers and checksums. Minutes, not hours."),
+        (
+            "Will it slow their machine down?",
+            "It reads file headers and checksums. A model folder takes minutes. A folder with hundreds of thousands of small files takes much longer, because Windows checks each file as it is opened.",
+        ),
         (
             "What if they will not show something?",
             "They can exclude it. The report records that a folder was excluded, never what was in it.",

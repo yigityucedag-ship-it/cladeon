@@ -169,7 +169,9 @@ pub fn render() -> Vec<u8> {
     b.key_value("Does it upload anything?", "No. Neither program opens a network connection.");
     b.key_value(
         "Will it slow their machine down?",
-        "It reads file headers and checksums. Minutes, not hours.",
+        "It reads file headers and checksums. A model folder takes minutes. A folder with \
+         hundreds of thousands of small files takes much longer, because Windows checks \
+         each file as it is opened.",
     );
     b.key_value(
         "What if they will not show something?",

@@ -268,7 +268,14 @@ pub const TR: &[(&str, &str)] = &[
         "This is everything found in the folders you chose. No file has been read and nothing has been written.",
         "Bu, seçtiğiniz klasörlerde bulunan her şeydir. Hiçbir dosya okunmadı ve hiçbir şey yazılmadı.",
     ),
-    ("Kind of file", "Dosya türü"),
+    ("Kind of file (by its name)", "Dosya türü (adına göre)"),
+    ("Folders with the most files", "En çok dosya içeren klasörler"),
+    (
+        "Every file adds time to the scan. If one of these does not hold your model or its training records, you can leave it out. The report will say a folder was left out, never what was in it.",
+        "Her dosya taramaya süre ekler. Bunlardan biri modelinizi veya eğitim kayıtlarınızı içermiyorsa dışarıda bırakabilirsiniz. Rapor bir klasörün dışarıda bırakıldığını söyler, içinde ne olduğunu asla söylemez.",
+    ),
+    ("Leave this out", "Bunu dışarıda bırak"),
+    ("files", "dosya"),
     ("Count", "Adet"),
     ("Size", "Boyut"),
     ("Total", "Toplam"),
@@ -651,8 +658,8 @@ pub const TR: &[(&str, &str)] = &[
         "Bilgisayarlarını yavaşlatır mı?",
     ),
     (
-        "It reads file headers and checksums. Minutes, not hours.",
-        "Dosya başlıklarını ve sağlama toplamlarını okur. Saatler değil, dakikalar sürer.",
+        "It reads file headers and checksums. A model folder takes minutes. A folder with hundreds of thousands of small files takes much longer, because Windows checks each file as it is opened.",
+        "Dosya başlıklarını ve sağlama toplamlarını okur. Bir model klasörü dakikalar sürer. Yüz binlerce küçük dosya içeren bir klasör çok daha uzun sürer, çünkü Windows her dosyayı açılırken denetler.",
     ),
     (
         "What if they will not show something?",

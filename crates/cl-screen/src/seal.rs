@@ -34,7 +34,7 @@ pub fn scan_and_seal(
     out_dir: &Path,
     nonce: &str,
     challenge_sig: Option<Vec<u8>>,
-    cancel: &dyn Fn() -> bool,
+    cancel: &(dyn Fn() -> bool + Sync),
     progress: &mut dyn FnMut(scan::Progress),
 ) -> ClResult<SealedBundle> {
     let result = scan::run(req, cancel, progress)?;
