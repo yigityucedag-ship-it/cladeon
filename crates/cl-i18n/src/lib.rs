@@ -320,6 +320,16 @@ pub const TR: &[(&str, &str)] = &[
         "Counts are of real work done, not an estimate. Large model files take the longest.",
         "Sayılar tahmin değil, gerçekten yapılan işi gösterir. En uzun süreyi büyük model dosyaları alır.",
     ),
+    ("This may take a while", "Bu biraz zaman alabilir"),
+    ("Files and folders found", "Bulunan dosya ve klasörler"),
+    (
+        "A folder with many files can take several minutes, sometimes longer, because Windows checks each file as it is opened. The counts above keep moving while it works. You can use your computer in the meantime; just leave this window open.",
+        "Çok sayıda dosya içeren bir klasör birkaç dakika, bazen daha uzun sürebilir, çünkü Windows her dosyayı açılırken denetler. Yukarıdaki sayılar çalıştığı sürece artmaya devam eder. Bu arada bilgisayarınızı kullanabilirsiniz; yalnızca bu pencereyi açık bırakın.",
+    ),
+    (
+        "This usually takes a few seconds. A folder with a very large number of files can take a minute or two.",
+        "Bu genellikle birkaç saniye sürer. Çok fazla dosya içeren bir klasör bir iki dakika sürebilir.",
+    ),
 
     // ---- vendor: done -----------------------------------------------------
     ("Done — now send the file back", "Bitti — şimdi dosyayı geri gönderin"),
@@ -356,8 +366,8 @@ pub const TR: &[(&str, &str)] = &[
     ("How to use this (PDF)", "Bu nasıl kullanılır (PDF)"),
     ("How it works", "Nasıl çalışır"),
     (
-        "1.  You write down who you are asking and what they told you.",
-        "1.  Kime sorduğunuzu ve size ne söylediklerini kaydedersiniz.",
+        "1.  You answer one question: what do they say they built?",
+        "1.  Tek bir soruyu yanıtlarsınız: ne kurduklarını söylüyorlar?",
     ),
     ("2.  Cladeon makes a folder. You e-mail it to them.", "2.  Cladeon bir klasör oluşturur. Onlara e-postayla gönderirsiniz."),
     (

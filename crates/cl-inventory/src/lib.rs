@@ -124,6 +124,9 @@ impl Default for ScanOptions {
 /// invented denominator would be a number the product cannot stand behind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ScanProgress {
+    /// Files and folders found so far while listing, before any is opened. Listing
+    /// a very large tree takes seconds, and this is what moves meanwhile.
+    pub entries_listed: u64,
     pub files_enumerated: u64,
     pub bytes_enumerated: u64,
     pub bytes_hashed: u64,
@@ -361,6 +364,9 @@ impl Scanner<'_> {
                 break;
             }
             self.entries_examined = self.entries_examined.saturating_add(1);
+            if self.entries_examined % 256 == 0 {
+                self.emit_progress();
+            }
 
             let alias = self.redactor.alias_path(&path);
             if self.is_excluded(&path) {
@@ -751,6 +757,7 @@ impl Scanner<'_> {
 
     fn emit_progress(&mut self) {
         let p = ScanProgress {
+            entries_listed: self.entries_examined,
             files_enumerated: self.inv.files_enumerated,
             bytes_enumerated: self.inv.bytes_enumerated,
             bytes_hashed: self.inv.bytes_hashed,

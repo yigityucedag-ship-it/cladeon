@@ -72,10 +72,6 @@ pub fn render() -> Vec<u8> {
          and run:",
     );
     b.paragraph(r"    Get-FileHash .\Cladeon.exe");
-    b.paragraph(
-        "The source code is also published, so anyone who wants to can read it or build \
-         their own copy rather than trusting this one.",
-    );
 
     b.rule();
 

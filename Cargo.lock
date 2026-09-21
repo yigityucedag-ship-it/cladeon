@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "cl-auditor-gui"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-case",
  "cl-core",
@@ -672,14 +672,14 @@ dependencies = [
 
 [[package]]
 name = "cl-bundle"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
 ]
 
 [[package]]
 name = "cl-case"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "ed25519-dalek",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "cl-contracts"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-facts",
@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "cl-core"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "getrandom 0.2.17",
  "sha2",
@@ -707,14 +707,14 @@ dependencies = [
 
 [[package]]
 name = "cl-facts"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
 ]
 
 [[package]]
 name = "cl-fixtures"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "clap",
@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "cl-formats"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-facts",
@@ -730,14 +730,14 @@ dependencies = [
 
 [[package]]
 name = "cl-i18n"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
 ]
 
 [[package]]
 name = "cl-inventory"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-facts",
@@ -745,14 +745,14 @@ dependencies = [
 
 [[package]]
 name = "cl-markers"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
 ]
 
 [[package]]
 name = "cl-report"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-facts",
@@ -762,7 +762,7 @@ dependencies = [
 
 [[package]]
 name = "cl-rules"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-facts",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "cl-screen"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-bundle",
  "cl-case",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "cl-screen-gui"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-case",
  "cl-core",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "cl-ui"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-core",
  "cl-i18n",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "cl-verify"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "cl-bundle",
  "cl-case",

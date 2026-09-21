@@ -60,6 +60,8 @@ impl Phase {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Progress {
     pub phase: Phase,
+    /// Files and folders found while listing, before any file is opened.
+    pub files_found: u64,
     pub files_seen: u64,
     pub bytes_seen: u64,
     pub bytes_hashed: u64,
@@ -156,6 +158,7 @@ pub fn run(
         &mut |p| {
             progress(Progress {
                 phase: Phase::Inventory,
+                files_found: p.entries_listed,
                 files_seen: p.files_enumerated,
                 bytes_seen: p.bytes_enumerated,
                 bytes_hashed: p.bytes_hashed,
@@ -186,6 +189,7 @@ pub fn run(
         parsed_count += 1;
         progress(Progress {
             phase: Phase::Parsing,
+            files_found: inventory.files_enumerated,
             files_seen: inventory.files_enumerated,
             bytes_seen: inventory.bytes_enumerated,
             bytes_hashed: inventory.bytes_hashed,
@@ -272,6 +276,7 @@ pub fn run(
     // ---- judge ----------------------------------------------------------
     progress(Progress {
         phase: Phase::Judging,
+        files_found: inventory.files_enumerated,
         files_seen: inventory.files_enumerated,
         bytes_seen: inventory.bytes_enumerated,
         bytes_hashed: inventory.bytes_hashed,

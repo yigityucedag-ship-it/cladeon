@@ -631,6 +631,12 @@ impl App {
                 ui.spinner();
                 ui.label(cl_ui::tr("Looking at what is there. Nothing has been read yet."));
             });
+            ui.add_space(8.0);
+            cl_ui::muted(
+                ui,
+                "This usually takes a few seconds. A folder with a very large number of files \
+                 can take a minute or two.",
+            );
             return;
         }
 
@@ -758,6 +764,7 @@ impl App {
             ui.label(egui::RichText::new(self.progress.phase.label()).size(15.0));
         });
         ui.add_space(12.0);
+        cl_ui::field(ui, "Files and folders found", &self.progress.files_found.to_string());
         cl_ui::field(ui, "Files seen", &self.progress.files_seen.to_string());
         cl_ui::field(ui, "Data examined", &cl_ui::bytes_human(self.progress.bytes_seen));
         cl_ui::field(ui, "Data checksummed", &cl_ui::bytes_human(self.progress.bytes_hashed));
@@ -765,6 +772,17 @@ impl App {
         cl_ui::muted(
             ui,
             "Counts are of real work done, not an estimate. Large model files take the longest.",
+        );
+        ui.add_space(12.0);
+        // Said up front rather than after it has already felt slow: someone watching
+        // a spinner with no explanation assumes it has hung and presses Stop.
+        cl_ui::callout(
+            ui,
+            cl_ui::colour::NEUTRAL,
+            "This may take a while",
+            "A folder with many files can take several minutes, sometimes longer, because \
+             Windows checks each file as it is opened. The counts above keep moving while it \
+             works. You can use your computer in the meantime; just leave this window open.",
         );
         ui.add_space(16.0);
         if cl_ui::secondary_button(ui, "Stop") {

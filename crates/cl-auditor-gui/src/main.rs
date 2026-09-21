@@ -367,7 +367,7 @@ impl App {
 
         ui.add_space(24.0);
         cl_ui::h2(ui, "How it works");
-        cl_ui::body(ui, "1.  You write down who you are asking and what they told you.");
+        cl_ui::body(ui, "1.  You answer one question: what do they say they built?");
         cl_ui::body(ui, "2.  Cladeon makes a folder. You e-mail it to them.");
         cl_ui::body(ui, "3.  They double-click one program and send back one file.");
         cl_ui::body(ui, "4.  You open that file here and read the report.");

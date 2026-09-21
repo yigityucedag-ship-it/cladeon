@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.1"
 description = "Checks whether an AI vendor's artifacts are consistent with how they say the system was built."
 edition = "2021"
 rust-version = "1.85"
