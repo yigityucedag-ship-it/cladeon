@@ -104,6 +104,17 @@ fn claim_text(origin: Option<WeightOrigin>) -> &'static str {
     }
 }
 
+/// What the report header calls the opened file.
+///
+/// The name only. See the call site for why; the full path stays available behind
+/// "Copy file location", which is a deliberate act rather than something a
+/// screenshot captures by accident.
+fn bundle_display_name(p: &std::path::Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "—".to_string())
+}
+
 const KEY_FILE: &str = "cladeon-issuer.key";
 
 /// A key already sitting beside the executable, if there is one.
@@ -481,7 +492,12 @@ impl App {
             cl_ui::field(ui, "Case", c);
         }
         if let Some(p) = &self.bundle_path {
-            cl_ui::field(ui, "File", &p.display().to_string());
+            // The name, not the path. A report gets screenshotted, projected in a
+            // meeting and pasted into e-mail, and a full path carries the reader's
+            // Windows user name and folder layout into all three. The product
+            // removes exactly that from the supplier's side; showing it on the
+            // buyer's own screen would be a double standard.
+            cl_ui::field(ui, "File", &bundle_display_name(p));
         }
 
         if let Some(claim) = &v.exact_claim_text {
@@ -693,6 +709,20 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_report_header_names_the_file_without_its_path() {
+        // A screenshot of a report must not carry the reader's user name or folder
+        // layout, and reports get screenshotted, projected and pasted into e-mail.
+        // Checked on the string itself: the interface it feeds cannot be rendered
+        // in a test.
+        let shown = super::bundle_display_name(std::path::Path::new(
+            r"C:\Users\someone\Desktop\cases\A reply from a supplier.clade",
+        ));
+        assert_eq!(shown, "A reply from a supplier.clade");
+        assert!(!shown.contains("someone"), "the user name reached the screen");
+        assert!(!shown.contains('\\') && !shown.contains('/'), "a path reached the screen");
+    }
+
     use super::*;
 
     #[test]
