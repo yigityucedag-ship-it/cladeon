@@ -1,0 +1,11 @@
+{
+  "name": "cladeon",
+  "displayName": "Cladeon",
+  "version": "1.0.1",
+  "description": "Screen an AI vendor's artifacts against how they say the model was built. Catches \"we trained our own model\" when the evidence shows a LoRA adapter or a wrapper. Runs entirely on your machine; a consistency screen, not a lie detector.",
+  "author": {
+    "name": "Yiğit Murat Yücedağ"
+  },
+  "license": "FSL-1.1-Apache-2.0",
+  "keywords": ["ai-procurement", "due-diligence", "model-provenance", "vendor-assessment", "lora"]
+}
