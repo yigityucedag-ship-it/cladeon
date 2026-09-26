@@ -10,14 +10,24 @@ deserialises what it finds, opens no network connection, and writes one `.clade`
 evidence bundle. Your job is to run it and relay what it says **without making it
 say more**.
 
-## 1. Check the tools are installed
+## 1. Make sure you are on the user's own computer
+
+Cladeon must run where the vendor's files already are. If you are in claude.ai chat, a
+cloud sandbox, or anywhere else that is not the user's own machine, do not run it there
+and **never ask the user to upload the vendor's files**: that would move confidential
+material off their machine, which is exactly what Cladeon exists to avoid. Instead,
+explain that Cladeon runs locally, and suggest Claude Code or a Cowork session on
+their computer, or the Cladeon desktop apps.
+
+## 2. Check the tools are installed
 
 Run `cladeon-screen-cli --help` and `cladeon-verify --help`. If either is missing, stop
 and tell the user to download the Cladeon command-line tools from the Releases page
-linked in this plugin's README and put them on their PATH. Do not try to build or
-download them yourself.
+linked in this plugin's README and put them on their PATH. The release builds are for
+Windows; on macOS or Linux they can build from source with `cargo build --release`.
+Do not try to build or download them yourself.
 
-## 2. Screening a folder
+## 3. Screening a folder
 
 1. **Get the claim, verbatim.** Ask for the vendor's exact words, such as "We trained
    our own 7B model from scratch". Never paraphrase it: it is quoted into the report.
@@ -34,7 +44,7 @@ download them yourself.
    instead of `--case-id`.
 5. **Verify the bundle you just wrote:** `cladeon-verify check <file>.clade`.
 
-## 3. Verifying a bundle someone sent
+## 4. Verifying a bundle someone sent
 
 Run `cladeon-verify check <file>.clade`, adding `--case-id <id>` when the user knows
 which case it should answer. The exit code matters:
@@ -46,7 +56,7 @@ which case it should answer. The exit code matters:
 | 2 | Could not read the file, or an argument was malformed |
 | 3 | Sound, but not bound to any challenge, so it answers no recorded question. This is not tampering. |
 
-## 4. How to report the result
+## 5. How to report the result
 
 - Report the five statuses (integrity, challenge, markers, coverage, evidence) and
   every per-facet result **separately, in Cladeon's own words**. Never merge them into
