@@ -428,6 +428,49 @@ fn every_vocabulary_string_appears_in_the_frozen_document() {
     );
 }
 
+/// The Claude plugin's skill lists the values each declared-method flag accepts, so
+/// Claude never has to probe the scanner to find them. A list that drifts from the
+/// code makes Claude pass a value the CLI rejects, or never offer one it accepts.
+#[test]
+fn plugin_skill_lists_exactly_the_declared_method_values() {
+    use cl_core::vocab::*;
+    let skill = read(&repo_root().join("plugin/cladeon/skills/screen-vendor/SKILL.md"));
+
+    let listed = |flag: &str| -> Vec<String> {
+        let marker = format!("`{flag}`");
+        let line = skill
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("- {marker}")))
+            .unwrap_or_else(|| panic!("SKILL.md has no value list for {flag}"));
+        let rest = &line[line.find(&marker).unwrap() + marker.len()..];
+        let mut vals: Vec<String> = rest.split('`').skip(1).step_by(2).map(str::to_string).collect();
+        vals.sort();
+        vals
+    };
+    let expected = |all: Vec<&str>| -> Vec<String> {
+        let mut v: Vec<String> = all.into_iter().map(str::to_string).collect();
+        v.sort();
+        v
+    };
+
+    assert_eq!(
+        listed("--weight-origin"),
+        expected(WeightOrigin::ALL.iter().map(|v| v.as_str()).collect())
+    );
+    assert_eq!(
+        listed("--parameter-update"),
+        expected(ParameterUpdate::ALL.iter().map(|v| v.as_str()).collect())
+    );
+    assert_eq!(
+        listed("--training-stage"),
+        expected(TrainingStage::ALL.iter().map(|v| v.as_str()).collect())
+    );
+    assert_eq!(
+        listed("--augmentation"),
+        expected(InferenceAugmentation::ALL.iter().map(|v| v.as_str()).collect())
+    );
+}
+
 #[test]
 fn every_cap_in_the_document_exists_in_code() {
     use cl_core::vocab::CapId;
