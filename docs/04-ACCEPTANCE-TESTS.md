@@ -183,5 +183,6 @@ Listed so they cannot be mistaken for covered.
    round-trip is covered.
 5. **`supervised_instruction_tuning` has no scored claim**, so a pure SFT declaration
    abstains on training stage.
-6. **No GUI**, so plan §22 Phase 3's "a nontechnical vendor completes the workflow
-   from a one-page guide" is unevaluated.
+6. **No usability test.** Both desktop apps exist, but plan §22 Phase 3's "a
+   nontechnical vendor completes the workflow from a one-page guide" has not been
+   tried with a real vendor, so it is unevaluated.

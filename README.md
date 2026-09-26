@@ -21,7 +21,7 @@ Stage-1 MVP, CLI-first, working end to end.
 
 | | |
 |---|---|
-| Tests | **677**, all passing |
+| Tests | **722**, all passing |
 | Compiler warnings | **0** |
 | Applications | `cladeon` 3.3 MB, `cladeon-screen` 3.5 MB — double-click, no install |
 | Command line | `cladeon-screen-cli` 0.8 MB, `cladeon-verify` 0.6 MB, `cladeon-fixtures` 0.3 MB |
@@ -197,7 +197,8 @@ actually exists.
   no detection rate is claimed.
 - **`supervised_instruction_tuning` has no scored claim**, so a pure SFT declaration
   abstains on training stage. The plan's rubric table has no SFT row either.
-- **No GUI.** Six-screen vendor app is Phase 3 of the plan and not started.
+- **No usability test.** Both desktop apps exist, but no non-technical vendor has yet
+  been observed completing the workflow unaided.
 - **No Authenticode signing or reproducible-build process** yet.
 
 ---
