@@ -7,5 +7,10 @@
     "name": "Yiğit Murat Yücedağ"
   },
   "license": "FSL-1.1-Apache-2.0",
+  "homepage": "https://github.com/yigityucedag-ship-it/cladeon",
+  "repository": "https://github.com/yigityucedag-ship-it/cladeon",
+  "documentationUrl": "https://github.com/yigityucedag-ship-it/cladeon/tree/master/plugin/cladeon#readme",
+  "privacyPolicyUrl": "https://github.com/yigityucedag-ship-it/cladeon/tree/master/plugin/cladeon#privacy-policy",
+  "supportUrl": "https://github.com/yigityucedag-ship-it/cladeon/issues",
   "keywords": ["ai-procurement", "due-diligence", "model-provenance", "vendor-assessment", "lora"]
 }
